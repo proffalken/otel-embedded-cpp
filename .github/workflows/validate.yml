@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup PlatformIO
+        uses: platformio/action@v2
+        with:
+          # Install dependencies defined in library.json
+          run: |-
+            pio update
+
+      - name: Build for ESP32 (esp32dev)
+        run: |
+          pio run --environment esp32dev
+
+      - name: Build for Pico W (pico_w)
+        run: |
+          pio run --environment pico_w
+
+      - name: Build for ESP8266 (esp01_1m)
+        run: |
+          pio run --environment esp01_1m
+
+      - name: Lint code
+        run: |
+          pio check --environment esp32dev
+

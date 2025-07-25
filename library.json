@@ -1,0 +1,40 @@
+{
+  "name": "otel-embedded-cpp",
+  "version": "1.0.0",
+  "description": "OpenTelemetry logging, tracing, and metrics for embedded C++ devices (ESP32, RP2040 Pico W, ESP8266).",
+  "keywords": [
+    "OpenTelemetry",
+    "telemetry",
+    "logging",
+    "tracing",
+    "metrics",
+    "embedded",
+    "iot",
+    "esp32",
+    "pico",
+    "esp8266"
+  ],
+  "authors": [
+    {
+      "name": "Your Name",
+      "maintainer": true
+    }
+  ],
+  "license": "MIT",
+  "frameworks": ["arduino"],
+  "platforms": [
+    "espressif32",
+    "espressif8266",
+    "raspberrypi"
+  ],
+  "dependencies": [
+    {
+      "name": "ArduinoJson",
+      "version": "^7.0.0"
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/otel-embedded-cpp.git"
+  }
+}
