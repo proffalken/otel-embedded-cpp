@@ -1,41 +1,44 @@
-name: CI
+name: Validate PlatformIO Library
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      - name: Setup PlatformIO
-        uses: platformio/action@v2
+      - name: Setup Python
+        uses: actions/setup-python@v4
         with:
-          # Install dependencies defined in library.json
-          run: |-
-            pio update
+          python-version: '3.11'
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install -U platformio
+
+      - name: PlatformIO Update
+        run: |
+          pio update
 
       - name: Build for ESP32 (esp32dev)
         run: |
-          pio run --environment esp32dev
+          pio run -e esp32dev
 
       - name: Build for Pico W (pico_w)
         run: |
-          pio run --environment pico_w
+          pio run -e pico_w
 
       - name: Build for ESP8266 (esp01_1m)
         run: |
-          pio run --environment esp01_1m
+          pio run -e esp01_1m
 
       - name: Lint code
         run: |
-          pio check --environment esp32dev
+          pio check -e esp32dev
 
