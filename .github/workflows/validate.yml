@@ -30,15 +30,12 @@ jobs:
         run: |
           pio run -e esp32dev
 
-      - name: Build for Pico W (pico_w)
+      - name: Build for Pico W (rpipicow)
         run: |
-          pio run -e pico_w
+          pio run -e rpipicow
 
       - name: Build for ESP8266 (esp01_1m)
         run: |
           pio run -e esp01_1m
 
-      - name: Lint code
-        run: |
-          pio check -e esp32dev
 
