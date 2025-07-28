@@ -1,11 +1,15 @@
-#pragma once
+#ifndef OTEL_SENDER_H
+#define OTEL_SENDER_H
 
 #include <ArduinoJson.h>
 
-namespace OTel {
-  class OtelSender {
-  public:
-    static void sendJson(const char *path, JsonDocument &doc);
-  };
+#ifndef OTEL_COLLECTOR_HOST
+#define OTEL_COLLECTOR_HOST "http://localhost:4318"
+#endif
+
+namespace OTelSender {
+  void sendJson(const char* path, JsonDocument& doc);
 }
+
+#endif
 

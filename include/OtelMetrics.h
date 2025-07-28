@@ -1,36 +1,39 @@
-#pragma once
+#ifndef OTEL_METRICS_H
+#define OTEL_METRICS_H
+
 #include <ArduinoJson.h>
-#include "OtelSender.h"
-#include "OtelDefaults.h"
+#include <OtelDefaults.h>
+#include <OtelSender.h>
 
-class OTelMetricBase : public OTelSender {
+class OTelMetricBase {
+public:
+  OTelMetricBase(String metricName, String metricUnit)
+      : name(metricName), unit(metricUnit) {}
+
+  virtual ~OTelMetricBase() {}
+
 protected:
-    String name;
-    String unit;
-    OTelResourceConfig config;
+  String name;
+  String unit;
 
-    void addCommonResource(JsonDocument &doc);
-
-public:
-    OTelMetricBase(String metricName, String metricUnit = "")
-        : name(metricName), unit(metricUnit), config(getDefaultResource()) {}
+  void addCommonResource(JsonDocument &doc);
 };
 
-class OTelGauge : public OTelMetricBase {
+class OTelGauge : public OTelMetricBase, public OtelSender {
 public:
-    using OTelMetricBase::OTelMetricBase;
-    void set(float value);
+  OTelGauge(String metricName, String metricUnit = "")
+      : OTelMetricBase(metricName, metricUnit) {}
+
+  void set(float value);
 };
 
-class OTelCounter : public OTelMetricBase {
+class OTelCounter : public OTelMetricBase, public OtelSender {
 public:
-    using OTelMetricBase::OTelMetricBase;
-    void inc(float value = 1.0f);
+  OTelCounter(String metricName, String metricUnit = "")
+      : OTelMetricBase(metricName, metricUnit) {}
+
+  void inc(float value);
 };
 
-class OTelHistogram : public OTelMetricBase {
-public:
-    using OTelMetricBase::OTelMetricBase;
-    void record(double value);
-};
+#endif
 

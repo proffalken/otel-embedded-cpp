@@ -1,60 +1,66 @@
-#include "OtelMetrics.h"
-#include "OtelDefaults.h"
-#include "OtelSender.h"
+#include <OtelMetrics.h>
 
-namespace OTel {
-
-void OTelMetricBase::addCommonResource(JsonDocument& doc) {
-    JsonObject resource = doc.createNestedObject("resource");
-    getDefaultResource().addResourceAttributes(resource);
+void OTelMetricBase::addCommonResource(JsonDocument &doc) {
+  JsonObject resource = doc["resource"].to<JsonObject>();
+  OTel::getDefaultResource().addResourceAttributes(resource);
 }
 
 void OTelGauge::set(float value) {
-    DynamicJsonDocument doc(1024);
-    JsonObject resourceMetric = doc.createNestedObject("resource_metrics");
-    getDefaultResource().addResourceAttributes(resourceMetric.createNestedObject("resource"));
+  JsonDocument doc;
 
-    JsonArray scopeMetrics = resourceMetric.createNestedArray("scope_metrics");
-    JsonObject scopeMetric = scopeMetrics.createNestedObject();
-    JsonArray metrics = scopeMetric.createNestedArray("metrics");
+  addCommonResource(doc);
 
-    JsonObject metric = metrics.createNestedObject();
-    metric["name"] = name;
-    metric["unit"] = unit;
-    JsonObject gauge = metric.createNestedObject("gauge");
-    JsonArray dataPoints = gauge.createNestedArray("data_points");
+  JsonArray scopeMetrics = doc["scopeMetrics"].to<JsonArray>();
+  JsonObject scopeMetric = scopeMetrics.add<JsonObject>();
 
-    JsonObject point = dataPoints.createNestedObject();
-    point["as_double"] = value;
-    point["time_unix_nano"] = millis() * 1000000ULL;
+  JsonObject scope = scopeMetric["scope"].to<JsonObject>();
+  scope["name"] = "OtelGauge";
 
-    OTelSender::sendJson("/v1/metrics", doc);
+  JsonArray metrics = scopeMetric["metrics"].to<JsonArray>();
+  JsonObject gauge = metrics.add<JsonObject>();
+
+  gauge["name"] = name;
+  gauge["unit"] = unit;
+  gauge["type"] = "gauge";
+
+  JsonObject gaugeData = gauge["gauge"].to<JsonObject>();
+  JsonArray dataPoints = gaugeData["dataPoints"].to<JsonArray>();
+  JsonObject dp = dataPoints.add<JsonObject>();
+
+  dp["asDouble"] = value;
+  dp["timeUnixNano"] = (uint64_t)(millis() * 1000000ULL);
+
+  OtelSender::sendJson("/v1/metrics", doc);
 }
 
 void OTelCounter::inc(float value) {
-    DynamicJsonDocument doc(1024);
-    JsonObject resourceMetric = doc.createNestedObject("resource_metrics");
-    getDefaultResource().addResourceAttributes(resourceMetric.createNestedObject("resource"));
+  JsonDocument doc;
 
-    JsonArray scopeMetrics = resourceMetric.createNestedArray("scope_metrics");
-    JsonObject scopeMetric = scopeMetrics.createNestedObject();
-    JsonArray metrics = scopeMetric.createNestedArray("metrics");
+  addCommonResource(doc);
 
-    JsonObject metric = metrics.createNestedObject();
-    metric["name"] = name;
-    metric["unit"] = unit;
-    JsonObject counter = metric.createNestedObject("sum");
-    counter["is_monotonic"] = true;
-    counter["aggregation_temporality"] = 2;
+  JsonArray scopeMetrics = doc["scopeMetrics"].to<JsonArray>();
+  JsonObject scopeMetric = scopeMetrics.add<JsonObject>();
 
-    JsonArray dataPoints = counter.createNestedArray("data_points");
+  JsonObject scope = scopeMetric["scope"].to<JsonObject>();
+  scope["name"] = "OtelCounter";
 
-    JsonObject point = dataPoints.createNestedObject();
-    point["as_double"] = value;
-    point["time_unix_nano"] = millis() * 1000000ULL;
+  JsonArray metrics = scopeMetric["metrics"].to<JsonArray>();
+  JsonObject counter = metrics.add<JsonObject>();
 
-    OTelSender::sendJson("/v1/metrics", doc);
+  counter["name"] = name;
+  counter["unit"] = unit;
+  counter["type"] = "sum";
+
+  JsonObject sum = counter["sum"].to<JsonObject>();
+  sum["isMonotonic"] = true;
+  sum["aggregationTemporality"] = 2;
+
+  JsonArray dataPoints = sum["dataPoints"].to<JsonArray>();
+  JsonObject dp = dataPoints.add<JsonObject>();
+
+  dp["asDouble"] = value;
+  dp["timeUnixNano"] = (uint64_t)(millis() * 1000000ULL);
+
+  OtelSender::sendJson("/v1/metrics", doc);
 }
-
-} // namespace OTel
 

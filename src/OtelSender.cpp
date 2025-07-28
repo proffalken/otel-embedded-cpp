@@ -1,21 +1,20 @@
 #include "OtelSender.h"
-#include "OtelDefaults.h"
-
-namespace OTel {
+#include <HTTPClient.h>
 
 void OTelSender::sendJson(const char* path, JsonDocument& doc) {
-    HTTPClient http;
+  if (doc.overflowed()) {
+    return;
+  }
 
-    String url = String(OTEL_COLLECTOR_HOST) + path;
-    http.begin(url);
-    http.addHeader("Content-Type", "application/json");
+  String payload;
+  serializeJson(doc, payload);
 
-    String body;
-    serializeJson(doc, body);
-    http.POST(body);
+  String url = String(OTEL_COLLECTOR_HOST) + path;
 
-    http.end();
+  HTTPClient http;
+  http.begin(url);
+  http.addHeader("Content-Type", "application/json");
+  http.POST(payload);
+  http.end();
 }
-
-} // namespace OTel
 
