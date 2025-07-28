@@ -1,46 +1,40 @@
 #include <Arduino.h>
 #include <OtelEmbeddedCpp.h>
 
-// Setup a few components
-OTel::Gauge loopCounter("loop.counter");
-OTel::Counter sensorReadings("sensor.reads");
-OTel::Histogram readDurations("sensor.duration", {10, 50, 100, 500}); // ms
-
-int counter = 0;
+OTel::Gauge tickGauge("loop.tick");
+OTel::Counter eventCounter("loop.event");
 
 void setup() {
   Serial.begin(115200);
-  delay(500); // Let Serial settle
+  delay(1000);
 
-  // Set collector from compile-time define
-  OTel::Logger::begin(OTEL_SERVICE_NAME, OTEL_COLLECTOR_HOST, OTEL_SERVICE_VERSION, OTEL_SERVICE_INSTANCE);
-  OTel::Tracer::setResource(OTel::getDefaultResource());
-  loopCounter.setResource(OTel::getDefaultResource());
-  sensorReadings.setResource(OTel::getDefaultResource());
-  readDurations.setResource(OTel::getDefaultResource());
+  // Initialise OpenTelemetry logging with service metadata
+  OTel::Logger::begin(OTEL_SERVICE_NAME, OTEL_SERVICE_NAMESPACE, OTEL_SERVICE_VERSION);
 
-  OTel::Logger::logInfo("Startup complete.");
+  // Log startup
+  OTel::Logger::logInfo("Startup complete");
+
+  // Optional: start a trace
+  auto setupSpan = OTel::Tracer::startSpan("setup_initialisation");
+  delay(100); // simulate some setup task
+  OTel::Tracer::endSpan(setupSpan);
 }
 
 void loop() {
-  uint64_t spanStart = OTel::Tracer::startSpan("loop");
+  static int ticks = 0;
 
-  // === Simulated work ===
-  unsigned long start = millis();
+  ticks++;
+  tickGauge.set(ticks);
+  eventCounter.inc();
 
-  digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+  if (ticks % 10 == 0) {
+    OTel::Logger::logInfo("10 ticks passed");
 
-  loopCounter.set(counter);
-  sensorReadings.inc();
+    auto span = OTel::Tracer::startSpan("ten_tick_block");
+    delay(50); // simulate some work
+    OTel::Tracer::endSpan(span);
+  }
 
-  delay(random(10, 100)); // simulate variable task duration
-
-  unsigned long end = millis();
-  readDurations.record(end - start);
-
-  OTel::Tracer::endSpan(spanStart);
-
-  counter++;
-  delay(2000); // Run every 2s
+  delay(1000);
 }
 

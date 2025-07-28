@@ -1,70 +1,72 @@
 #pragma once
-
 #include <ArduinoJson.h>
-#include <Arduino.h>
-#include "OtelMetrics.h"       // For OTelSender and OTelResourceConfig
-#include "OtelEmbeddedCpp.h"   // For OTel::getDefaultResource
+#include "OtelSender.h"
+#include "OtelDefaults.h"
 
-class OTelTracer : public OTelSender {
+namespace OTel {
+
+struct SpanContext {
+    uint64_t start;
+    String traceId;
+    String spanId;
+};
+
+class Tracer : public OTelSender {
+private:
+    static OTelResourceConfig config;
+
 public:
-  static void begin(const String &serviceName,
-                    const String &collector,
-                    const String &version = "0.1.0",
-                    const String &instanceId = "") {
-    setCollectorHost(collector);
-    _resource = OTelResourceConfig(serviceName, "", version, instanceId);
-  }
+    static SpanContext startSpan(const String& name, const SpanContext* parent = nullptr) {
+        SpanContext ctx;
+        ctx.start = millis() * 1000000ull;
+        ctx.traceId = generateHex(16);
+        ctx.spanId = generateHex(8);
+        return ctx;
+    }
 
-  static void setResource(const OTelResourceConfig &cfg) {
-    _resource = cfg;
-  }
+    static void endSpan(const SpanContext& ctx) {
+        uint64_t end = millis() * 1000000ull;
 
-  static uint64_t startSpan(const String &name) {
-    uint64_t t = ((uint64_t)millis()) * 1000000ULL;
-    _spanStart = t;
-    _spanName = name;
-    return t;
-  }
+        JsonDocument doc;
+        JsonObject resourceSpans = doc["resourceSpans"].add<JsonObject>();
+        JsonObject resource = resourceSpans["resource"].to<JsonObject>();
+        JsonArray attrs = resource["attributes"].to<JsonArray>();
+        config.serializeAttributes(attrs);
 
-  static void endSpan(uint64_t startTime) {
-    StaticJsonDocument<1024> doc;
+        JsonObject scopeSpans = resourceSpans["scopeSpans"].add<JsonObject>();
+        JsonObject scope = scopeSpans["scope"].to<JsonObject>();
+        scope["name"] = "otel-embedded";
+        scope["version"] = "0.0.1";
 
-    JsonObject resourceSpans = doc.createNestedArray("resourceSpans").createNestedObject();
-    JsonObject resource = resourceSpans.createNestedObject("resource");
-    JsonArray attrs = resource.createNestedArray("attributes");
-    _resource.serializeAttributes(attrs);
-    resource["droppedAttributesCount"] = 0;
+        JsonArray spans = scopeSpans["spans"].to<JsonArray>();
+        JsonObject span = spans.add<JsonObject>();
+        span["traceId"] = ctx.traceId;
+        span["spanId"] = ctx.spanId;
+        span["name"] = "unnamed";
+        span["startTimeUnixNano"] = ctx.start;
+        span["endTimeUnixNano"] = end;
 
-    JsonObject scopeSpans = resourceSpans.createNestedArray("scopeSpans").createNestedObject();
-    JsonObject scope = scopeSpans.createNestedObject("scope");
-    scope["name"] = "otel-embedded-cpp";
-    scope["version"] = "0.2.0";
+        sendJson(doc, "/v1/traces");
+    }
 
-    JsonArray spans = scopeSpans.createNestedArray("spans");
-    JsonObject span = spans.createNestedObject();
-    span["name"] = _spanName;
-    span["startTimeUnixNano"] = startTime;
-    span["endTimeUnixNano"] = ((uint64_t)millis()) * 1000000ULL;
-    span["traceId"] = generateHexId(32); // 128-bit hex
-    span["spanId"] = generateHexId(16);  // 64-bit hex
-    span["kind"] = 1; // INTERNAL
-
-    sendJson(doc, "/v1/traces");
-  }
+    static void begin(const String& serviceName, const String& host, const String& version = "") {
+        config = getDefaultResource();
+        config.setAttribute("service.name", serviceName);
+        config.setAttribute("host.name", host);
+        if (version != "") {
+            config.setAttribute("service.version", version);
+        }
+    }
 
 private:
-  static OTelResourceConfig _resource;
-  static String _spanName;
-  static uint64_t _spanStart;
-
-  static String generateHexId(int bits) {
-    String out;
-    for (int i = 0; i < bits / 8; i++) {
-      byte b = random(0, 255);
-      if (b < 16) out += "0";
-      out += String(b, HEX);
+    static String generateHex(size_t length) {
+        String result;
+        for (size_t i = 0; i < length; ++i) {
+            result += String(random(16), HEX);
+        }
+        return result;
     }
-    return out;
-  }
 };
+
+}  // namespace OTel
 
