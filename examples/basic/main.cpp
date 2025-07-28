@@ -1,25 +1,46 @@
 #include <Arduino.h>
 #include <OtelEmbeddedCpp.h>
 
-// Setup the loop id so we can increment it
-int loop_id = 0;
+// Setup a few components
+OTel::Gauge loopCounter("loop.counter");
+OTel::Counter sensorReadings("sensor.reads");
+OTel::Histogram readDurations("sensor.duration", {10, 50, 100, 500}); // ms
 
-// Create the gauge
-OTel::Gauge loop_id("loop.id");
+int counter = 0;
 
-void setup(){
-  OTel::Logger::begin("storper_bot", "storper.local", "v0.0.1");
-  auto pinSpan = OTel::Tracer::startSpan("setup_pins", mainSpan);
-  pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(LEFT_A, OUTPUT);
-  pinMode(LEFT_B, OUTPUT);
-  pinMode(RIGHT_A, OUTPUT);
-  pinMode(RIGHT_B, OUTPUT);
-  OTel::Tracer::endSpan(pinSpan);
-};
+void setup() {
+  Serial.begin(115200);
+  delay(500); // Let Serial settle
 
-void loop(){
-  OTel::Logger::logInfo("Setup started.");
-  loop_id.set(loop_id, {{"test", "ci"}});
-  loop_id++;
-};
+  // Set collector from compile-time define
+  OTel::Logger::begin(OTEL_SERVICE_NAME, OTEL_COLLECTOR_HOST, OTEL_SERVICE_VERSION, OTEL_SERVICE_INSTANCE);
+  OTel::Tracer::setResource(OTel::getDefaultResource());
+  loopCounter.setResource(OTel::getDefaultResource());
+  sensorReadings.setResource(OTel::getDefaultResource());
+  readDurations.setResource(OTel::getDefaultResource());
+
+  OTel::Logger::logInfo("Startup complete.");
+}
+
+void loop() {
+  uint64_t spanStart = OTel::Tracer::startSpan("loop");
+
+  // === Simulated work ===
+  unsigned long start = millis();
+
+  digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+
+  loopCounter.set(counter);
+  sensorReadings.inc();
+
+  delay(random(10, 100)); // simulate variable task duration
+
+  unsigned long end = millis();
+  readDurations.record(end - start);
+
+  OTel::Tracer::endSpan(spanStart);
+
+  counter++;
+  delay(2000); // Run every 2s
+}
+
