@@ -81,7 +81,7 @@ public:
 
     JsonObject sum = metric["sum"].to<JsonObject>();
     sum["isMonotonic"] = true;
-    sum["aggregationTemporality"] = 1;
+    sum["aggregationTemporality"] = 2;
 
     JsonObject dp = sum["dataPoints"].add<JsonObject>();
     config.addResourceAttributes(dp);
@@ -122,9 +122,11 @@ public:
     JsonObject metric = metrics.add<JsonObject>();
     metric["name"] = name;
     metric["unit"] = unit;
+    metric["type"] = "histogram";
 
     // histogram object
     JsonObject histogram = metric["histogram"].to<JsonObject>();
+    histogram["aggregationTemporality"] = 2;
 
     // dataPoints → array
     JsonArray dataPoints = histogram["dataPoints"].to<JsonArray>();

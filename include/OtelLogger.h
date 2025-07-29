@@ -9,8 +9,12 @@ namespace OTel {
 
 class Logger {
 public:
-  static void begin(const String &serviceName, const String &collector, const String &version) {
+  static void begin(const String &serviceName,
+         const String &serviceNamespace, 
+         const String &collector, 
+         const String &version) {
     getDefaultResource().setAttribute("service.name", serviceName);
+    getDefaultResource().setAttribute("service.namespace", serviceNamespace);
     getDefaultResource().setAttribute("service.version", version);
     getDefaultResource().setAttribute("host.name", collector);
   }
