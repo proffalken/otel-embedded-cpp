@@ -92,6 +92,54 @@ public:
   }
 };
 
+class OTelHistogram : public OTelMetricBase {
+public:
+  using OTelMetricBase::OTelMetricBase;
+
+  void record(double value) {
+    // no size parameters, use the new JsonDocument
+    JsonDocument doc;
+
+    // resourceMetrics → array
+    JsonArray resourceMetrics = doc["resourceMetrics"].to<JsonArray>();
+    JsonObject resourceMetric = resourceMetrics.add<JsonObject>();
+
+    // resource + attributes
+    JsonObject resource = resourceMetric["resource"].to<JsonObject>();
+    config.addResourceAttributes(resource);
+
+    // scopeMetrics → array
+    JsonArray scopeMetrics = resourceMetric["scopeMetrics"].to<JsonArray>();
+    JsonObject scopeMetric = scopeMetrics.add<JsonObject>();
+
+    // scope
+    JsonObject scope = scopeMetric["scope"].to<JsonObject>();
+    scope["name"]    = "otel-embedded";
+    scope["version"] = "0.1.0";
+
+    // metrics → array
+    JsonArray metrics = scopeMetric["metrics"].to<JsonArray>();
+    JsonObject metric = metrics.add<JsonObject>();
+    metric["name"] = name;
+    metric["unit"] = unit;
+
+    // histogram object
+    JsonObject histogram = metric["histogram"].to<JsonObject>();
+
+    // dataPoints → array
+    JsonArray dataPoints = histogram["dataPoints"].to<JsonArray>();
+    JsonObject dp = dataPoints.add<JsonObject>();
+
+    // attach resource attrs, timestamp, and value
+    config.addResourceAttributes(dp);
+    dp["timeUnixNano"] = (unsigned long long)millis() * 1000000ULL;
+    dp["asDouble"]     = value;
+
+    // ship it off
+    OTelSender::sendJson("/v1/metrics", doc);
+  }
+};
+
 } // namespace OTel
 
 #endif
