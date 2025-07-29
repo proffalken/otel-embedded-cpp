@@ -2,57 +2,45 @@
 #define OTEL_LOGGER_H
 
 #include <ArduinoJson.h>
-#include <OtelDefaults.h>
-#include <OtelSender.h>
+#include "OtelDefaults.h"
+#include "OtelSender.h"
 
 namespace OTel {
 
-class Logger : public OtelSender {
+class Logger {
 public:
-  static OTelResourceConfig config;
-
-  static void begin(const String& serviceName,
-                    const String& host,
-                    const String& version = "") {
-    config.setAttribute("service.name", serviceName);
-    config.setAttribute("host.name", host);
-    if (version.length()) {
-      config.setAttribute("service.version", version);
-    }
+  static void begin(const String &serviceName, const String &collector, const String &version) {
+    getDefaultResource().setAttribute("service.name", serviceName);
+    getDefaultResource().setAttribute("service.version", version);
+    getDefaultResource().setAttribute("host.name", collector);
   }
 
-  static void log(const char* severity, const String& body) {
+  static void log(const char* severity, const String& message) {
     JsonDocument doc;
-    JsonObject logRoot = doc.to<JsonObject>();
 
-    JsonObject resource = logRoot["resource"].to<JsonObject>();
-    config.addResourceAttributes(resource);
+    JsonObject resourceLog = doc["resourceLogs"].add<JsonObject>();
+    JsonObject resource = resourceLog["resource"].to<JsonObject>();
+    getDefaultResource().addResourceAttributes(resource);
 
-    JsonArray scopeLogs = logRoot["scopeLogs"].to<JsonArray>();
-    JsonObject scopeLog = scopeLogs.add<JsonObject>();
+    JsonObject scopeLog = resourceLog["scopeLogs"].add<JsonObject>();
     JsonObject scope = scopeLog["scope"].to<JsonObject>();
-    scope["name"] = "OtelLogger";
+    scope["name"] = "otel-embedded";
+    scope["version"] = "0.1.0";
 
-    JsonArray logs = scopeLog["logRecords"].to<JsonArray>();
-    JsonObject log = logs.add<JsonObject>();
+    JsonObject logEntry = scopeLog["logRecords"].add<JsonObject>();
+    logEntry["timeUnixNano"] = (unsigned long long)(millis()) * 1000000ULL;
+    JsonObject body = logEntry["body"].to<JsonObject>();
+    body["stringValue"] = message;
 
-    log["timeUnixNano"] = (uint64_t) (millis() * 1000000ULL);
-    log["severityText"] = severity;
-    log["body"]["stringValue"] = body;
+    OTelSender::sendJson("/v1/logs", doc);
+  }
 
-    sendJson("/v1/logs", doc);
+  static void logInfo(const char* message) {
+    log("info", String(message));
   }
 
   static void logInfo(const String& message) {
-    log("INFO", message);
-  }
-
-  static void logWarn(const String& message) {
-    log("WARN", message);
-  }
-
-  static void logError(const String& message) {
-    log("ERROR", message);
+    log("info", message);
   }
 };
 

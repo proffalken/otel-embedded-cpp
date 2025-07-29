@@ -2,27 +2,41 @@
 #define OTEL_TRACER_H
 
 #include <ArduinoJson.h>
-#include <OtelDefaults.h>
-#include <OtelSender.h>
+#include "OtelDefaults.h"
+#include "OtelSender.h"
 
 namespace OTel {
 
 class Span {
 public:
-  Span(String name);
-  void end();
-
-private:
+  String traceId;
+  String spanId;
+  unsigned long start;
   String name;
-  uint64_t startTime;
+
+  Span(const String& n, const String& tId, const String& sId)
+      : name(n), traceId(tId), spanId(sId), start(millis()) {}
+
+  void end();
 };
 
-class Tracer : public OtelSender {
+class Tracer {
 public:
-  static void begin(const String &serviceName, const String &host,
-                    const String &version = "");
-  static Span startSpan(const char *name);
-  static void endSpan(Span &span);
+  static Span startSpan(const String& name, const String& parentId = "") {
+    String traceId = randomHex(32);
+    String spanId = randomHex(16);
+    return Span(name, traceId, spanId);
+  }
+
+private:
+  static String randomHex(int length) {
+    const char* chars = "0123456789abcdef";
+    String output;
+    for (int i = 0; i < length; i++) {
+      output += chars[random(16)];
+    }
+    return output;
+  }
 };
 
 } // namespace OTel

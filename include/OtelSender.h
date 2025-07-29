@@ -7,9 +7,14 @@
 #define OTEL_COLLECTOR_HOST "http://localhost:4318"
 #endif
 
-namespace OTelSender {
-  void sendJson(const char* path, JsonDocument& doc);
-}
+namespace OTel {
+
+class OTelSender {
+public:
+  static void sendJson(const char* path, JsonDocument& doc);
+};
+
+} // namespace OTel
 
 #endif
 

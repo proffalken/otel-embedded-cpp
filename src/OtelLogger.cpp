@@ -1,6 +1,4 @@
-#include <OtelLogger.h>
+#include "OtelLogger.h"
 
-namespace OTel {
-  OTelResourceConfig Logger::config = getDefaultResource();
-}
+// Nothing to define here as all functions are static and inline-compatible
 
