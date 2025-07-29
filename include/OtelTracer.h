@@ -8,7 +8,7 @@
 namespace OTel {
 
 //––– a single, shared ResourceConfig for the whole process –––
-static inline OTelResourceConfig& defaultResource() {
+static inline OTelResourceConfig& defaultTraceResource() {
   static OTelResourceConfig rc;
   return rc;
 }
@@ -32,7 +32,7 @@ struct Span {
 
     // attach the shared resource attributes
     JsonObject resource = rs["resource"].to<JsonObject>();
-    defaultResource().addResourceAttributes(resource);
+    defaultTraceResource().addResourceAttributes(resource);
 
     // scopeSpans → [ { … } ]
     JsonArray ssArr = rs["scopeSpans"].to<JsonArray>();
@@ -65,7 +65,7 @@ public:
                     const String& serviceNamespace,
                     const String& host,
                     const String& version = "") {
-    auto& rc = defaultResource();
+    auto& rc = defaultTraceResource();
     rc.setAttribute("service.name",  serviceName);
     rc.setAttribute("service.namespace",  serviceNamespace);
     rc.setAttribute("host.name",     host);

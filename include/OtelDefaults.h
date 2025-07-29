@@ -7,6 +7,7 @@
 
 namespace OTel {
 
+
 /**
  * @brief Get the current UNIX time in nanoseconds.
  * Uses the POSIX gettimeofday() clock, which you should have
