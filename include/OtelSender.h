@@ -4,7 +4,7 @@
 #include <ArduinoJson.h>
 
 #ifndef OTEL_COLLECTOR_HOST
-#define OTEL_COLLECTOR_HOST "http://localhost:4318"
+#define OTEL_COLLECTOR_HOST "http://192.168.8.10:4318"
 #endif
 
 namespace OTel {

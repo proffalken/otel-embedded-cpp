@@ -46,7 +46,7 @@ public:
     JsonObject gauge = metric["gauge"].to<JsonObject>();
     JsonObject dp = gauge["dataPoints"].add<JsonObject>();
     config.addResourceAttributes(dp);
-    dp["timeUnixNano"] = (unsigned long long)(millis()) * 1000000ULL;
+    dp["timeUnixNano"] = nowUnixNano();
     dp["asDouble"] = value;
 
     OTelSender::sendJson("/v1/metrics", doc);
@@ -81,11 +81,11 @@ public:
 
     JsonObject sum = metric["sum"].to<JsonObject>();
     sum["isMonotonic"] = true;
-    sum["aggregationTemporality"] = 2;
+    sum["aggregationTemporality"] = 1;
 
     JsonObject dp = sum["dataPoints"].add<JsonObject>();
     config.addResourceAttributes(dp);
-    dp["timeUnixNano"] = (unsigned long long)(millis()) * 1000000ULL;
+    dp["timeUnixNano"] = nowUnixNano();
     dp["asDouble"] = count;
 
     OTelSender::sendJson("/v1/metrics", doc);
@@ -132,7 +132,7 @@ public:
 
     // attach resource attrs, timestamp, and value
     config.addResourceAttributes(dp);
-    dp["timeUnixNano"] = (unsigned long long)millis() * 1000000ULL;
+    dp["timeUnixNano"] = nowUnixNano();
     dp["asDouble"]     = value;
 
     // ship it off

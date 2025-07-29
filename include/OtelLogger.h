@@ -28,7 +28,7 @@ public:
     scope["version"] = "0.1.0";
 
     JsonObject logEntry = scopeLog["logRecords"].add<JsonObject>();
-    logEntry["timeUnixNano"] = (unsigned long long)(millis()) * 1000000ULL;
+    logEntry["timeUnixNano"] = nowUnixNano();
     JsonObject body = logEntry["body"].to<JsonObject>();
     body["stringValue"] = message;
 

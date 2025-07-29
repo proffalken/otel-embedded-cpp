@@ -15,10 +15,16 @@
 namespace OTel {
 
 void OTelSender::sendJson(const char* path, JsonDocument& doc) {
-  if (doc.overflowed()) return;
+  if (doc.overflowed()){
+     Serial.println("Document Overflowed");
+     return;
+  }
 
   String payload;
   serializeJson(doc, payload);
+  Serial.print("Sending to ");
+  Serial.println(OTEL_COLLECTOR_HOST);
+  Serial.println(payload);
 
   HTTPClient http;
   // on ESP8266 the legacy begin(url) is removed, must pass a WiFiClient

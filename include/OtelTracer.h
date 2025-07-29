@@ -15,7 +15,7 @@ public:
   String name;
 
   Span(const String& n, const String& tId, const String& sId)
-      : name(n), traceId(tId), spanId(sId), start(millis()) {}
+      : name(n), traceId(tId), spanId(sId), start(nowUnixNano()) {}
 
   void end();
 };

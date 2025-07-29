@@ -3,8 +3,23 @@
 
 #include <map>
 #include <ArduinoJson.h>
+#include <sys/time.h>    // for gettimeofday()
 
 namespace OTel {
+
+/**
+ * @brief Get the current UNIX time in nanoseconds.
+ * Uses the POSIX gettimeofday() clock, which you should have
+ * synchronized via configTime()/time().
+ */
+static inline uint64_t nowUnixNano() {
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  // seconds→ns, usec→ns
+  return uint64_t(tv.tv_sec) * 1000000000ULL
+       + uint64_t(tv.tv_usec) *    1000ULL;
+}
+
 struct OTelResourceConfig {
   // internal map of attributes
   std::map<String, String> attrs;

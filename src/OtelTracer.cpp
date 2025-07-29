@@ -18,8 +18,8 @@ void Span::end() {
   spanObj["traceId"] = traceId;
   spanObj["spanId"] = spanId;
   spanObj["name"] = name;
-  spanObj["startTimeUnixNano"] = (unsigned long long)(start) * 1000000ULL;
-  spanObj["endTimeUnixNano"] = (unsigned long long)(millis()) * 1000000ULL;
+  spanObj["startTimeUnixNano"] = nowUnixNano();
+  spanObj["endTimeUnixNano"] = nowUnixNano();
 
   OTelSender::sendJson("/v1/traces", doc);
 }
