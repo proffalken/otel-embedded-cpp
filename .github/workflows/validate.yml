@@ -28,14 +28,14 @@ jobs:
 
       - name: Build for ESP32 (esp32dev)
         run: |
-          pio run -e esp32dev
+          platformio ci examples/basic/main.cpp --project-conf platformio.ini --lib "." -e esp32dev
 
       - name: Build for Pico W (rpipicow)
         run: |
-          pio run -e rpipicow
+          platformio ci examples/basic/main.cpp --project-conf platformio.ini --lib "." -e rpipicow
 
-      - name: Build for ESP8266 (esp01_1m)
+      - name: Build for ESP8266 (esp8266 d1_mini)
         run: |
-          pio run -e esp01_1m
+          platformio ci examples/basic/main.cpp --project-conf platformio.ini --lib "." -e esp8266
 
 
