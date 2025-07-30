@@ -22,6 +22,7 @@
 #endif
 
 // OTLP library
+#include "OtelDebug.h"
 #include "OtelDefaults.h"
 #include "OtelSender.h"
 #include "OtelLogger.h"
@@ -83,19 +84,19 @@ void setup() {
   WiFi.begin(OTEL_WIFI_SSID, OTEL_WIFI_PASS);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
-    Serial.print('.');
+    DBG_PRINT('.');
   }
-  Serial.println("\nWi-Fi connected!");
+  DBG_PRINTLN("\nWi-Fi connected!");
 
   // 2) Sync NTP (configTime works on Pico W, ESP32 & ESP8266 in Arduino land)
   //    We're polling until we get something > Jan 1 2020 (1609459200).
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-  Serial.print("Waiting NTP sync");
+  DBG_PRINT("Waiting NTP sync");
   while (time(nullptr) < 1609459200UL) {
-    Serial.print('.');
+    DBG_PRINT('.');
     delay(500);
   }
-  Serial.println();
+  DBG_PRINTLN();
 
   // 3) (Optional) print the calendar time
   {
@@ -120,7 +121,7 @@ void setup() {
     OTEL_SERVICE_INSTANCE,
     OTEL_SERVICE_VERSION
   );
-  Serial.println("OTLP Logger ready");
+  DBG_PRINTLN("OTLP Logger ready");
 }
 
 void loop() {
