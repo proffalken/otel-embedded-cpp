@@ -144,50 +144,77 @@ public:
   using OTelMetricBase::OTelMetricBase;
 
   void record(double value) {
-    // no size parameters, use the new JsonDocument
+    // 1) Build the top‐level JSON document
     JsonDocument doc;
 
-    // resourceMetrics → array
+    // ── resourceMetrics → [ { … } ]
     JsonArray resourceMetrics = doc["resourceMetrics"].to<JsonArray>();
     JsonObject resourceMetric = resourceMetrics.add<JsonObject>();
 
-    // resource + attributes
+    //    └─ resource
     JsonObject resource = resourceMetric["resource"].to<JsonObject>();
     config.addResourceAttributes(resource);
 
-    // scopeMetrics → array
+    // ── scopeMetrics → [ { … } ]
     JsonArray scopeMetrics = resourceMetric["scopeMetrics"].to<JsonArray>();
     JsonObject scopeMetric = scopeMetrics.add<JsonObject>();
 
-    // scope
+    //    └─ scope
     JsonObject scope = scopeMetric["scope"].to<JsonObject>();
     scope["name"]    = "otel-embedded";
     scope["version"] = "0.1.0";
 
-    // metrics → array
+    //    └─ metrics → [ { … } ]
     JsonArray metrics = scopeMetric["metrics"].to<JsonArray>();
     JsonObject metric = metrics.add<JsonObject>();
     metric["name"] = name;
     metric["unit"] = unit;
     metric["type"] = "histogram";
 
-    // histogram object
+    //      └─ histogram
     JsonObject histogram = metric["histogram"].to<JsonObject>();
-    histogram["aggregationTemporality"] = 2;
+    histogram["aggregationTemporality"] = 2;  // DELTA = 2
 
-    // dataPoints → array
+    //      └─ dataPoints → [ { … } ]
     JsonArray dataPoints = histogram["dataPoints"].to<JsonArray>();
     JsonObject dp = dataPoints.add<JsonObject>();
 
-    // attach resource attrs, timestamp, and value
+    //         ├─ shared resource labels
     config.addResourceAttributes(dp);
-    dp["timeUnixNano"] = nowUnixNano();
-    dp["asDouble"]     = value;
 
-    // ship it off
+    //         ├─ timestamp, count, sum
+    dp["timeUnixNano"] = nowUnixNano();
+    dp["count"]        = 1;
+    dp["sum"]          = value;
+
+    //         ├─ explicitBounds (define your buckets here)
+    static const double explicitBounds[] = {100.0, 200.0, 500.0, 1000.0};
+    static const size_t  B = sizeof(explicitBounds) / sizeof(*explicitBounds);
+    JsonArray boundsArr = dp["explicitBounds"].to<JsonArray>();
+    for (size_t i = 0; i < B; ++i) {
+      boundsArr.add(explicitBounds[i]);
+    }
+
+    //         └─ bucketCounts (one slot per boundary + underflow/overflow)
+    JsonArray countsArr = dp["bucketCounts"].to<JsonArray>();
+    // find which bucket this value falls into
+    size_t bucketIdx = B;  // overflow by default
+    for (size_t i = 0; i < B; ++i) {
+      if (value <= explicitBounds[i]) {
+        bucketIdx = i;
+        break;
+      }
+    }
+    // emit counts: exactly one '1' in the right bucket, zero elsewhere
+    for (size_t i = 0; i <= B; ++i) {
+      countsArr.add(i == bucketIdx ? 1 : 0);
+    }
+
+    // 2) Send it
     OTelSender::sendJson("/v1/metrics", doc);
   }
 };
+
 
 } // namespace OTel
 
