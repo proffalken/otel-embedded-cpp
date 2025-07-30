@@ -1,5 +1,7 @@
 #pragma once
 
+#include "OtelDebug.h"
+
 #include "OtelLogger.h"
 #include "OtelTracer.h"
 #include "OtelMetrics.h"

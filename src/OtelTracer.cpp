@@ -1,3 +1,5 @@
+#include "OtelDebug.h"
+
 #include "OtelTracer.h"
 
 // (All of the implementation is inline in the header, so this translation

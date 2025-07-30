@@ -1,3 +1,5 @@
+#include "OtelDebug.h"
+
 #include "OtelSender.h"
 // ——————————————————————————————————————————————————————————
 // Platform-specific networking includes
@@ -16,15 +18,18 @@ namespace OTel {
 
 void OTelSender::sendJson(const char* path, JsonDocument& doc) {
   if (doc.overflowed()){
-     Serial.println("Document Overflowed");
+     DBG_PRINTLN("Document Overflowed");
      return;
   }
 
   String payload;
   serializeJson(doc, payload);
-  Serial.print("Sending to ");
-  Serial.println(OTEL_COLLECTOR_HOST);
-  Serial.println(payload);
+//  DBG_PRINT("Sending to ");
+//  DBG_PRINT(OTEL_COLLECTOR_HOST);
+//  DBG_PRINT(":");
+//  DBG_PRINT(OTEL_COLLECTOR_PORT);
+//  DBG_PRINTLN(path);
+//  DBG_PRINTLN(payload);
 
   HTTPClient http;
   // on ESP8266 the legacy begin(url) is removed, must pass a WiFiClient
@@ -35,13 +40,11 @@ void OTelSender::sendJson(const char* path, JsonDocument& doc) {
     http.begin(String(OTEL_COLLECTOR_HOST) + path);
   #endif
 
+   DBG_PRINTLN(payload);
+
    http.addHeader("Content-Type", "application/json");
    http.POST(payload);
    http.end();
-
-  http.addHeader("Content-Type", "application/json");
-  http.POST(payload);
-  http.end();
 }
 
 } // namespace OTel

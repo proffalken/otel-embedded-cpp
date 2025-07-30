@@ -158,6 +158,7 @@ Override defaults in `OtelDefaults.h` or via `-D` flags:
 | `OTEL_SERVICE_VERSION`   | `"v1.0.0"`         | Semantic version                                |
 | `OTEL_SERVICE_INSTANCE`  | `"instance-1"`     | Unique instance ID                              |
 | `OTEL_DEPLOY_ENV`        | `"dev"`            | Deployment environment (e.g. `prod`, `staging`) |
+| `DEBUG`                  | `Null`             | Print verbose messages including OTEL Payload to the serial port       |
 
 ---
 
