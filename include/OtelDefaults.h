@@ -143,11 +143,6 @@ static inline OTelResourceConfig& defaultResource() {
   return rc;
 }
 
-/** Separate default resource for tracing, as expected by existing code 
-static inline OTelResourceConfig& defaultTraceResource() {
-  static OTelResourceConfig rc;
-  return rc;
-}*/
 
 } // namespace OTel
 

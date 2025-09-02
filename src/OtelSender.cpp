@@ -77,28 +77,6 @@ DBG_PRINT("HTTP POST returned: "); DBG_PRINTLN(code);
 if (code < 0) { DBG_PRINTLN(http.errorToString(code)); }
 http.end();
 
-  /*
-  HTTPClient http;
-  // on ESP8266 the legacy begin(url) is removed, must pass a WiFiClient
-  String url = String(OTEL_COLLECTOR_HOST) + path;
-  DBG_PRINT("HTTP begin URL: >"); DBG_PRINT(url); DBG_PRINTLN("<");  // angle brackets expose stray quotes/spaces
-  #if defined(ESP8266)
-    WiFiClient client;
-    http.begin(client, String(OTEL_COLLECTOR_HOST) + path);
-  #else
-    http.begin(String(OTEL_COLLECTOR_HOST) + path);
-  #endif
-
-   DBG_PRINTLN(payload);
-
-   http.addHeader("Content-Type", "application/json");
-   http.POST(payload);
-   http.end();
-
-   int code = http.POST(payload);
-DBG_PRINT("HTTP POST returned: "); DBG_PRINTLN(code);
-if (code < 0) { DBG_PRINTLN(http.errorToString(code)); }
-*/
 }
 
 } // namespace OTel
