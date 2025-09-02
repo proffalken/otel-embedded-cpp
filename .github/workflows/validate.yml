@@ -41,11 +41,11 @@ jobs:
         run: pio update
 
       - name: Build for ESP32 (esp32dev)
-        run: platformio ci examples/basic/main.cpp --project-conf platformio.ini --lib "." -e esp32dev
+        run: platformio ci src/main.cpp --project-conf platformio.ini --lib "." -e esp32dev
 
       - name: Build for Pico W (rpipicow)
-        run: platformio ci examples/basic/main.cpp --project-conf platformio.ini --lib "." -e rpipicow
+        run: platformio ci src/main.cpp --project-conf platformio.ini --lib "." -e rpipicow
 
       - name: Build for ESP8266 (esp8266 d1_mini)
-        run: platformio ci examples/basic/main.cpp --project-conf platformio.ini --lib "." -e esp8266
+        run: platformio ci src/main.cpp --project-conf platformio.ini --lib "." -e esp8266
 
