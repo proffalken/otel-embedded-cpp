@@ -106,22 +106,21 @@ void setup() {
     Serial.printf("NTP time: %s", asctime(&tm));
   }
 
-  // 4) Init your OTLP logger & tracer
-  OTel::Logger::begin(
-    OTEL_SERVICE_NAME,
-    OTEL_SERVICE_NAMESPACE,
-    OTEL_SERVICE_INSTANCE,
-    OTEL_SERVICE_INSTANCE,
-    OTEL_SERVICE_VERSION
-  );
+    // Set resource attributes once (service/host/instance/etc.)
+  auto &res = OTel::defaultResource();
+  res.set("service.name",        "guidance-sytem");
+  res.set("service.instance.id", "818b08");
+#if defined(ARDUINO_ARCH_ESP32) || defined(ESP8266)
+  res.set("host.name", WiFi.getHostname());
+#else
+  res.set("host.name", "rp2040");
+#endif
 
-  OTel::Tracer::begin(
-    OTEL_SERVICE_NAME,
-    OTEL_SERVICE_NAMESPACE,
-    OTEL_SERVICE_INSTANCE,
-    OTEL_SERVICE_VERSION
-  );
-  DBG_PRINTLN("OTLP Logger ready");
+  // Optional: default labels for all log lines from this process
+  OTel::Logger::setDefaultLabel("role", "gps");
+  OTel::Logger::setDefaultLabel("sensor_type", "neo-m6");
+
+  OTel::Logger::logInfo("Logger initialised");
 }
 
 void loop() {
@@ -142,6 +141,12 @@ void loop() {
   // Record a gauge
   static OTel::OTelGauge heartbeatGauge("heartbeat.gauge", "1");
   heartbeatGauge.set(1.0f);
+
+   // Log with labels that ADD and OVERWRITE defaults:
+  // - adds event="startup"
+  // - overwrites zone="ls" (was "chest")
+  OTel::Logger::logInfo("Starting step",
+    { {"event","startup"}, {"sensor_type","neo-m9"} });
 
   // End the trace span (this actually sends the trace)
   span.end();
