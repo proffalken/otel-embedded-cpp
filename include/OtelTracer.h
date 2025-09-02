@@ -264,34 +264,40 @@ public:
     currentTraceContext().spanId  = spanId_;
   }
 
+  // RAII: if user forgets to call end(), do it at scope exit.
+  ~Span() {
+    if (!ended_) {
+      end();
+    }
+  }
+
+  // You can still call this manually; it's safe to call more than once.
   void end() {
+    if (ended_) return;               // idempotent guard
+    ended_ = true;
+
     const uint64_t endNs = nowUnixNano();
 
-    // Build OTLP/HTTP traces payload (ArduinoJson v7)
+    // Build minimal OTLP/HTTP JSON payload for a single span
     JsonDocument doc;
 
-    JsonArray resourceSpans = doc["resourceSpans"].to<JsonArray>();
-    JsonObject rs = resourceSpans.add<JsonObject>();
-
-    // resource with attributes
-    JsonObject resource = rs["resource"].to<JsonObject>();
-    JsonArray rattrs = resource["attributes"].to<JsonArray>();
+    // resourceSpans[0].resource.attributes[...]
+    JsonArray rattrs = doc["resourceSpans"][0]["resource"]["attributes"].to<JsonArray>();
     addResAttr(rattrs, "service.name",        defaultServiceName());
     addResAttr(rattrs, "service.instance.id", defaultServiceInstanceId());
     addResAttr(rattrs, "host.name",           defaultHostName());
 
-    // scope
-    JsonObject ss = rs["scopeSpans"].to<JsonArray>().add<JsonObject>();
-    JsonObject scope = ss["scope"].to<JsonObject>();
+    // instrumentation scope
+    JsonObject scope = doc["resourceSpans"][0]["scopeSpans"][0]["scope"].to<JsonObject>();
     scope["name"]    = tracerConfig().scopeName;
     scope["version"] = tracerConfig().scopeVersion;
 
-    // span
-    JsonArray spans = ss["spans"].to<JsonArray>();
-    JsonObject s = spans.add<JsonObject>();
+    // span body
+    JsonObject s = doc["resourceSpans"][0]["scopeSpans"][0]["spans"][0].to<JsonObject>();
     s["traceId"]           = traceId_;
     s["spanId"]            = spanId_;
     s["name"]              = name_;
+    s["kind"]              = 2; // SERVER by default; adjust if you have a setter
     s["startTimeUnixNano"] = u64ToStr(startNs_);
     s["endTimeUnixNano"]   = u64ToStr(endNs);
 
@@ -308,19 +314,37 @@ public:
     currentTraceContext().spanId  = prevSpanId_;
   }
 
+  // Optional helpers (if you have them already, keep yours)
   const String& traceId() const { return traceId_; }
   const String& spanId()  const { return spanId_;  }
-  const String& name()    const { return name_;    }
 
 private:
-  String   name_;
-  String   traceId_;
-  String   spanId_;
+  // Utility to add a resource attribute
+  static inline void addResAttr(JsonArray& arr, const char* key, const String& val) {
+    JsonObject a = arr.add<JsonObject>();
+    a["key"] = key;
+    a["value"]["stringValue"] = val;
+  }
+
+  static inline String u64ToStr(uint64_t v) {
+    // Avoid ambiguous Arduino String(uint64_t) by formatting manually
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%llu", static_cast<unsigned long long>(v));
+    return String(buf);
+  }
+
+private:
+  String name_;
+  String traceId_;
+  String spanId_;
   uint64_t startNs_;
 
-  // For proper nesting
+  // Previous active context (for parent linkage and restoration)
   String prevTraceId_;
   String prevSpanId_;
+
+  // RAII guard
+  bool ended_ = false;
 };
 
 // ---- Tracer facade ----------------------------------------------------------

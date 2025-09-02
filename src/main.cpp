@@ -27,12 +27,12 @@
   #endif
 #endif
 
-// ---------- WiFi setup (use build_flags -DSSID=\"...\" -DPASS=\"...\") ----------
-#ifndef SSID
-  #define SSID "WIFI"
+// ---------- WiFi setup (use build_flags -DWIFI_SSID=\"...\" -DWIFI_PASS=\"...\") ----------
+#ifndef WIFI_SSID
+  #define WIFI_SSID "WIFI"
 #endif
-#ifndef PASS
-  #define PASS "SSID"
+#ifndef WIFI_PASS
+  #define WIFI_PASS "WIFI_SSID"
 #endif
 
 #ifndef OTEL_SERVICE_NAME
@@ -164,7 +164,7 @@ static void handleRequest(const String& method,
       // Simulate some work
       delay(10);
       // childSpan ends on scope exit
-      childSpan.end();
+      //childSpan.end();
     }
 
     // Prepare response
@@ -185,7 +185,7 @@ static void handleRequest(const String& method,
     serializeJson(doc, out);
     sendJson(client, 200, out);
 
-    serverSpan.end();
+    //serverSpan.end();
 
     // serverSpan ends on scope exit
   }
@@ -198,8 +198,8 @@ void setup() {
 
 
   WiFi.mode(WIFI_STA);
-  WiFi.begin(SSID, PASS);
-  Serial.printf("Connecting to %s", SSID);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  Serial.printf("Connecting to %s", WIFI_SSID);
   for (int i = 0; i < 60 && WiFi.status() != WL_CONNECTED; ++i) {
     delay(250);
     Serial.print('.');
