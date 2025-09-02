@@ -11,31 +11,41 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Install PlatformIO
+        run: python -m pip install -U platformio
+
+      # Make repo Variables + Secrets available to all subsequent steps
+      - name: Export env for build
         run: |
-          python -m pip install -U platformio
+          echo "::add-mask::${{ secrets.WIFI_PASS }}"
+          {
+            echo "WIFI_SSID=${{ vars.WIFI_SSID }}"
+            echo "WIFI_PASS=${{ secrets.WIFI_PASS }}"
+            echo "OTEL_COLLECTOR_HOST=${{ vars.OTEL_COLLECTOR_HOST }}"
+            echo "OTEL_COLLECTOR_PORT=${{ vars.OTEL_COLLECTOR_PORT }}"
+            echo "OTEL_SERVICE_NAME=${{ vars.OTEL_SERVICE_NAME }}"
+            echo "OTEL_SERVICE_NAMESPACE=${{ vars.OTEL_SERVICE_NAMESPACE }}"
+            echo "OTEL_SERVICE_VERSION=${{ vars.OTEL_SERVICE_VERSION }}"
+            echo "OTEL_SERVICE_INSTANCE=${{ vars.OTEL_SERVICE_INSTANCE }}"
+            echo "OTEL_DEPLOY_ENV=${{ vars.OTEL_DEPLOY_ENV }}"
+          } >> "$GITHUB_ENV"
 
       - name: PlatformIO Update
-        run: |
-          pio update
+        run: pio update
 
       - name: Build for ESP32 (esp32dev)
-        run: |
-          platformio ci examples/basic/main.cpp --project-conf platformio.ini --lib "." -e esp32dev
+        run: platformio ci examples/basic/main.cpp --project-conf platformio.ini --lib "." -e esp32dev
 
       - name: Build for Pico W (rpipicow)
-        run: |
-          platformio ci examples/basic/main.cpp --project-conf platformio.ini --lib "." -e rpipicow
+        run: platformio ci examples/basic/main.cpp --project-conf platformio.ini --lib "." -e rpipicow
 
       - name: Build for ESP8266 (esp8266 d1_mini)
-        run: |
-          platformio ci examples/basic/main.cpp --project-conf platformio.ini --lib "." -e esp8266
-
+        run: platformio ci examples/basic/main.cpp --project-conf platformio.ini --lib "." -e esp8266
 

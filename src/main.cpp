@@ -38,6 +38,11 @@
 #ifndef OTEL_SERVICE_NAME
   #define OTEL_SERVICE_NAME "embedded-device"
 #endif
+
+#ifndef OTEL_SERVICE_NAMESPACE
+  #define OTEL_SERVICE_NAMESPACE "demo-service"
+#endif
+
 #ifndef OTEL_SERVICE_VERSION
   #define OTEL_SERVICE_VERSION "0.1.0"
 #endif
@@ -233,6 +238,7 @@ void setup() {
     // Set resource attributes once (service/host/instance/etc.)
   auto &res = OTel::defaultResource();
   res.set("service.name",        "guidance-sytem");
+  res.set("service.namespace",   OTEL_SERVICE_NAMESPACE);
   res.set("service.instance.id", "818b08");
 #if defined(ARDUINO_ARCH_ESP32) || defined(ESP8266)
   res.set("host.name", WiFi.getHostname());
