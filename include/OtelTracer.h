@@ -143,6 +143,43 @@ if (doc["b3"].is<const char*>()) {
 
     return out; // invalid if none matched
   }
+// --- ADD these inside: struct OTel::Propagators { ... } ---
+
+// Generic injector: pass a setter that accepts (key, value).
+template <typename Setter>
+static inline void inject(Setter set, uint8_t flags = 0x01) {
+  const auto& ctx = OTel::currentTraceContext();
+
+  // Only inject if we actually have a valid active context
+  if (ctx.traceId.length() != 32 || ctx.spanId.length() != 16) {
+    return; // no active span/context; skip injection rather than invent IDs
+  }
+
+  char tpbuf[64];
+  // "00-" + 32 + "-" + 16 + "-" + 2 = 55 chars
+  snprintf(tpbuf, sizeof(tpbuf), "00-%s-%s-%02x",
+           ctx.traceId.c_str(),
+           ctx.spanId.c_str(),
+           static_cast<unsigned>(flags));
+
+  set("traceparent", tpbuf);
+
+  // NOTE: your TraceContext doesn't have tracestate; omit it to avoid compile errors.
+  // If you add tracestate in future, you can forward it here.
+}
+
+// Convenience: inject into ArduinoJson JsonDocument payloads
+static inline void injectToJson(JsonDocument& doc, uint8_t flags = 0x01) {
+  inject([&](const char* k, const char* v){ doc[k] = v; }, flags);
+}
+
+// Convenience: inject into HTTP headers via a generic adder (e.g., http.addHeader)
+template <typename HeaderAdder>
+static inline void injectToHeaders(HeaderAdder add, uint8_t flags = 0x01) {
+  inject(add, flags);
+}
+
+
 };
 
 // RAII helper: temporarily install a remote parent context as the active one
