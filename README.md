@@ -77,8 +77,18 @@ The example code shows how to do this with the `time` library and NTP.
 
 ```cpp
 #include <Arduino.h>
-#include <WiFi.h>
 #include <time.h>
+
+#if defined(ESP32)
+  #include <WiFi.h>
+#elif defined(ESP8266)
+  #include <ESP8266WiFi.h>
+#elif defined(ARDUINO_ARCH_RP2040)
+  // Earle Philhower’s Arduino-Pico core exposes a WiFi.h for Pico W
+  #include <WiFi.h>
+#else
+  #error "This example targets ESP32, ESP8266, or RP2040 (Pico W) with WiFi."
+#endif
 
 // ---------------------------------------------------------
 // Import Open Telemetry Libraries
