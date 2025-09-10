@@ -16,6 +16,12 @@ All examples assume use of the Arduino framework under PlatformIO, and that you 
 
 The example code shows how to do this with the `time` library and NTP.
 
+### Concurrency and performance
+
+Where supported (RP2040 and *some* ESP32 boards), the code to process and send the data is moved to the second core of the device.
+
+This removes any blocking code and ensures that the HTTP POST call does not interfere with the main loop.
+
 ---
 
 ## 🚀 Installation with PlatformIO
@@ -173,14 +179,17 @@ Override defaults in `OtelDefaults.h` or via `-D` flags:
 | ------------------------ | ------------------ | ----------------------------------------------- |
 | `WIFI_SSID`              | `"default"`        | Wi‑Fi SSID                                      |
 | `WIFI_PASS`              | `"default"`        | Wi‑Fi password                                  |
-| `OTEL_COLLECTOR_HOST`    | `"http://…:4318"`  | OTLP HTTP endpoint                              |
-| `OTEL_COLLECTOR_PORT`    | `4318`             | OTLP HTTP port                                  |
+| `OTEL_COLLECTOR_BASE_URL`| `Null`             | The base URL (http://192.168.8.10:4318) of the otel collector |
 | `OTEL_SERVICE_NAME`      | `"demo_service"`   | Name of your service                            |
 | `OTEL_SERVICE_NAMESPACE` | `"demo_namespace"` | Service namespace                               |
 | `OTEL_SERVICE_VERSION`   | `"v1.0.0"`         | Semantic version                                |
 | `OTEL_SERVICE_INSTANCE`  | `"instance-1"`     | Unique instance ID                              |
 | `OTEL_DEPLOY_ENV`        | `"dev"`            | Deployment environment (e.g. `prod`, `staging`) |
+| `OTEL_WORKER_BURST`      | `16`               | The number of telemetry messages to process at a time |
+| `OTEL_WORKER_SLEEP_MS`   | `0`                | How long to sleep between processing messages (0 is instant) |
+| `OTEL_QUEUE_CAPACITY`    | `128`              | The maximum number of telemetry messages we can store before we start to drop data |
 | `DEBUG`                  | `Null`             | Print verbose messages including OTEL Payload to the serial port       |
+
 
 ---
 
