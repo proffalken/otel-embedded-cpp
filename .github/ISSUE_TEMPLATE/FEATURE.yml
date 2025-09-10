@@ -19,7 +19,7 @@ body:
     validations:
       required: false
   - type: textarea
-    id: what--do-you-want-to-see?
+    id: what_do_you_want_to_see
     attributes:
       label: What do you want to see?
       description: What are we missing in our project?
@@ -45,7 +45,7 @@ body:
     validations:
       required: false
   - type: textarea
-    id: other info
+    id: other_info
     attributes:
       label: What else can you tell us to help us implement this?
       description: Is there another project that does similar things? Do you have example code? Please post it here!
