@@ -12,6 +12,8 @@ A C++ library for instrumenting constrained embedded devices with OpenTelemetry.
 
 All examples assume use of the Arduino framework under PlatformIO, and that you have already implemented the network connection stack along with any code needed to set the clock on your embedded device to the correct time.
 
+**WE STRONGLY RECOMMEND YOU USE NTP TO SET THE INTERNAL CLOCK, ALONG WITH AN RTC MODULE IF AVAILABLE**
+
 The example code shows how to do this with the `time` library and NTP.
 
 ---
@@ -33,12 +35,12 @@ The example code shows how to do this with the `time` library and NTP.
      https://github.com/proffalken/otel-embedded-cpp.git#main
    ```
 
-2. **Configure your build flags** (either hard‑coded or via `${sysenv.*}`):
+2. **Configure your build flags in platformio.ini** (either hard‑coded or via `${sysenv.*}`):
 
    ```ini
    build_flags =
-     -DOTEL_WIFI_SSID="${sysenv.OTEL_WIFI_SSID}"
-     -DOTEL_WIFI_PASS="${sysenv.OTEL_WIFI_PASS}"
+     -DWIFI_SSID="${sysenv.OTEL_WIFI_SSID}"
+     -DWIFI_PASS="${sysenv.OTEL_WIFI_PASS}"
      -DOTEL_COLLECTOR_HOST="${sysenv.OTEL_COLLECTOR_HOST}"
      -DOTEL_COLLECTOR_PORT=${sysenv.OTEL_COLLECTOR_PORT}
      -DOTEL_SERVICE_NAME="${sysenv.OTEL_SERVICE_NAME}"
@@ -78,11 +80,14 @@ The example code shows how to do this with the `time` library and NTP.
 #include <WiFi.h>
 #include <time.h>
 
+// ---------------------------------------------------------
+// Import Open Telemetry Libraries
+// ---------------------------------------------------------
 #include "OtelDefaults.h"
-#include "OtelSender.h"
-#include "OtelLogger.h"
 #include "OtelTracer.h"
+#include "OtelLogger.h"
 #include "OtelMetrics.h"
+#include "OtelDebug.h"
 
 static constexpr uint32_t HEARTBEAT_INTERVAL = 5000;
 
@@ -105,19 +110,26 @@ void setup() {
   while (time(nullptr) < 1609459200UL) { delay(500); }
 
   // Initialise Logger & Tracer
-  OTel::Logger::begin(
-    OTEL_SERVICE_NAME,
-    OTEL_SERVICE_NAMESPACE,
-    WiFi.localIP().toString(),    // optional collector info
-    WiFi.macAddress(),            // host identifier
-    OTEL_SERVICE_VERSION
-  );
-  OTel::Tracer::begin(
-    OTEL_SERVICE_NAME,
-    OTEL_SERVICE_NAMESPACE,
-    OTEL_SERVICE_INSTANCE,
-    OTEL_SERVICE_VERSION
-  );
+  
+  // Set the defaults for the resources
+  auto &res = OTel::defaultResource();
+  res.set("service",        OTEL_SERVICE_NAME);
+  res.set("service.name",        OTEL_SERVICE_NAME);
+  res.set("service.namespace",   OTEL_SERVICE_NAMESPACE);
+  res.set("service.instance.id", OTEL_SERVICE_INSTANCE);
+  res.set("host.name", "my-embedded device");
+
+  // Setup our tracing engine
+  OTel::Tracer::begin("otel-embedded", "1.0.1");
+
+  // Make sure that we start with empty trace and span ID's
+  OTel::currentTraceContext().traceId = "";
+  OTel::currentTraceContext().spanId  = "";
+
+  // Setup the metrics engine
+  OTel::Metrics::begin("otel-embedded", "1.0.1");
+  OTel::Metrics::setDefaultMetricLabel("device.role", "test-device");
+  OTel::Metrics::setDefaultMetricLabel("device.id", "device-chip-id-or-mac");
 }
 
 void loop() {
@@ -149,8 +161,8 @@ Override defaults in `OtelDefaults.h` or via `-D` flags:
 
 | Macro                    | Default            | Description                                     |
 | ------------------------ | ------------------ | ----------------------------------------------- |
-| `OTEL_WIFI_SSID`         | `"default"`        | Wi‑Fi SSID                                      |
-| `OTEL_WIFI_PASS`         | `"default"`        | Wi‑Fi password                                  |
+| `WIFI_SSID`              | `"default"`        | Wi‑Fi SSID                                      |
+| `WIFI_PASS`              | `"default"`        | Wi‑Fi password                                  |
 | `OTEL_COLLECTOR_HOST`    | `"http://…:4318"`  | OTLP HTTP endpoint                              |
 | `OTEL_COLLECTOR_PORT`    | `4318`             | OTLP HTTP port                                  |
 | `OTEL_SERVICE_NAME`      | `"demo_service"`   | Name of your service                            |
@@ -169,8 +181,7 @@ We welcome contributions of all kinds! To help us maintain a high standard:
 1. **Fork** the repository and create a feature branch.
 2. **Follow** the existing code style (header‑only, minimal macros, clear names).
 3. **Document** any new APIs or changes in this README.
-4. **Issue** a pull request against `refactor/headers` once your changes are ready.
-5. **Respond** to review comments promptly.
+4. **Issue** a pull request against the main repo once your changes are ready.
 
 Please open an issue for:
 
