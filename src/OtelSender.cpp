@@ -109,7 +109,7 @@ void OTelSender::workerLoop_() {
       #if defined(HTTPCLIENT_1_2_COMPATIBLE) || defined(ESP8266) || defined(ESP32)
       http.setReuse(true);
       #endif
-      if (httpBeginCompat(http,fullUrl_(it.path))) {
+      if (httpBeginCompat(http, fullUrl_(it.path))) {
         http.addHeader("Content-Type", "application/json");
         (void)http.POST(it.payload);
         http.end();
