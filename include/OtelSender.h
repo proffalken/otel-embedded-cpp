@@ -28,9 +28,6 @@
 
 // Internal queue capacity for async sender on RP2040.
 // Keep small to bound RAM; increase if you see drops.
-#ifndef OTEL_QUEUE_CAPACITY
-#define OTEL_QUEUE_CAPACITY 16
-#endif
 
 struct OTelQueuedItem {
   const char* path;   // "/v1/logs", "/v1/traces", "/v1/metrics"
