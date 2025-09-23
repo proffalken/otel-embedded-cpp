@@ -2,7 +2,6 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <atomic>
-
 // Optional compile-time on/off switch for all network sends.
 // You can set -DOTEL_SEND_ENABLE=0 in platformio.ini for latency tests.
 #ifndef OTEL_SEND_ENABLE
@@ -17,9 +16,6 @@
 #define OTEL_WORKER_SLEEP_MS 0
 #endif
 
-#ifndef OTEL_QUEUE_CAPACITY
-#define OTEL_QUEUE_CAPACITY 128
-#endif
 // Base URL of your OTLP/HTTP collector (no trailing slash), e.g. "http://192.168.8.50:4318"
 // You can override this via build_flags: -DOTEL_COLLECTOR_BASE_URL="\"http://…:4318\""
 #ifndef OTEL_COLLECTOR_BASE_URL
@@ -28,6 +24,9 @@
 
 // Internal queue capacity for async sender on RP2040.
 // Keep small to bound RAM; increase if you see drops.
+#ifndef OTEL_QUEUE_CAPACITY
+#define OTEL_QUEUE_CAPACITY 16
+#endif
 
 struct OTelQueuedItem {
   const char* path;   // "/v1/logs", "/v1/traces", "/v1/metrics"
