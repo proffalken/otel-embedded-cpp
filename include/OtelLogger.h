@@ -28,13 +28,13 @@ struct LogScopeConfig {
   String scopeName{"otel-embedded-cpp"};
   String scopeVersion{""}; // optional
 };
-static inline LogScopeConfig& logScopeConfig() {
+inline LogScopeConfig& logScopeConfig() {
   static LogScopeConfig cfg;
   return cfg;
 }
 
 // ---- Default labels (merged into each log record's attributes) --------------
-static inline std::map<String, String>& defaultLabels() {
+inline std::map<String, String>& defaultLabels() {
   static std::map<String, String> labels;
   return labels;
 }
@@ -91,9 +91,7 @@ private:
     // Resource (with attributes to ensure service.name lands)
     JsonObject resource = rl["resource"].to<JsonObject>();
     JsonArray rattrs = resource["attributes"].to<JsonArray>();
-    addResAttr(rattrs, "service.name",        defaultServiceName());
-    addResAttr(rattrs, "service.instance.id", defaultServiceInstanceId());
-    addResAttr(rattrs, "host.name",           defaultHostName());
+    buildResourceAttributes(rattrs, defaultServiceName(), defaultServiceInstanceId(), defaultHostName());
 
     // Scope
     JsonObject sl = rl["scopeLogs"].to<JsonArray>().add<JsonObject>();
