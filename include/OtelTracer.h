@@ -509,7 +509,11 @@ public:
   // ---------- Span kind (OTLP SpanKind) --------------------------------------
   // INTERNAL=1, SERVER=2, CLIENT=3, PRODUCER=4, CONSUMER=5
   Span& setKind(int kind) {
-    kind_ = kind;
+    // Validate input to avoid emitting invalid OTLP SpanKind values.
+    // Only update kind_ if the provided value is within the allowed range.
+    if (kind >= 1 && kind <= 5) {
+      kind_ = kind;
+    }
     return *this;
   }
 
