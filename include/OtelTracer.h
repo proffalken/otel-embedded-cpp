@@ -651,7 +651,7 @@ public:
     if (statusCode_ != 0) {
       JsonObject status = s["status"].to<JsonObject>();
       status["code"] = statusCode_;
-      if (statusMessage_.length() > 0) {
+      if (statusCode_ == 2 && statusMessage_.length() > 0) {
         status["message"] = statusMessage_;
       }
     }
