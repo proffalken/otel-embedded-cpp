@@ -495,7 +495,14 @@ public:
   // ---------- Span status (OTLP StatusCode) -----------------------------------
   // UNSET=0, OK=1, ERROR=2
   Span& setStatus(int code, const String& message = "") {
-    statusCode_ = code;
+    // Clamp to valid OTLP StatusCode range to ensure spec-compliant payloads.
+    if (code < 0) {
+      statusCode_ = 0;  // UNSET
+    } else if (code > 2) {
+      statusCode_ = 2;  // ERROR
+    } else {
+      statusCode_ = code;
+    }
     statusMessage_ = message;
     return *this;
   }
