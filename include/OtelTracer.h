@@ -405,6 +405,15 @@ static inline String generateSpanId() {
 
 
 
+// ---- Deprecated: use buildResourceAttributes() instead ----------------------
+// Kept for backwards compatibility with existing user code.
+[[deprecated("Use buildResourceAttributes() instead")]]
+static inline void addResAttr(JsonArray& arr, const char* key, const String& value) {
+  JsonObject a = arr.add<JsonObject>();
+  a["key"] = key;
+  a["value"].to<JsonObject>()["stringValue"] = value;
+}
+
 // ---- OTLP SpanKind constants ------------------------------------------------
 namespace SpanKind {
   constexpr int INTERNAL = 1;
