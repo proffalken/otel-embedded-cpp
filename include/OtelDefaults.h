@@ -149,22 +149,27 @@ inline OTelResourceConfig& defaultResource() {
  * Merges runtime defaultResource() values with compile-time fallbacks.
  * Runtime values always win over fallbacks.
  */
-static inline void buildResourceAttributes(JsonArray& attrs,
+inline void buildResourceAttributes(JsonArray& attrs,
     const String& fallbackServiceName,
     const String& fallbackInstanceId,
     const String& fallbackHostName)
 {
+    // Pre-constructed keys to avoid per-call temporary String heap allocations
+    static const String kServiceName("service.name");
+    static const String kServiceInstanceId("service.instance.id");
+    static const String kHostName("host.name");
+
     const auto& res = defaultResource();
 
     // Add compile-time fallbacks only for keys not set at runtime
-    if (res.attrs.find("service.name") == res.attrs.end()) {
-        serializeKeyValue(attrs, "service.name", fallbackServiceName);
+    if (res.attrs.find(kServiceName) == res.attrs.end()) {
+        serializeKeyValue(attrs, kServiceName, fallbackServiceName);
     }
-    if (res.attrs.find("service.instance.id") == res.attrs.end()) {
-        serializeKeyValue(attrs, "service.instance.id", fallbackInstanceId);
+    if (res.attrs.find(kServiceInstanceId) == res.attrs.end()) {
+        serializeKeyValue(attrs, kServiceInstanceId, fallbackInstanceId);
     }
-    if (res.attrs.find("host.name") == res.attrs.end()) {
-        serializeKeyValue(attrs, "host.name", fallbackHostName);
+    if (res.attrs.find(kHostName) == res.attrs.end()) {
+        serializeKeyValue(attrs, kHostName, fallbackHostName);
     }
 
     // Add all runtime resource attributes (overrides included)

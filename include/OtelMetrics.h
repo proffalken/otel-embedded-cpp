@@ -8,7 +8,7 @@
 #include <ArduinoJson.h>
 #include "OtelDefaults.h"   // expects: nowUnixNano()
 #include "OtelSender.h"     // expects: OTelSender::sendJson(path, doc)
-#include "OtelTracer.h"     // reuses: u64ToStr(), defaultServiceName(), defaultServiceInstanceId(), defaultHostName(), addResAttr()
+#include "OtelTracer.h"     // reuses: u64ToStr(), defaultServiceName(), defaultServiceInstanceId(), defaultHostName()
 
 namespace OTel {
 

@@ -405,11 +405,20 @@ static inline String generateSpanId() {
 
 
 
-// Add one string attribute to a resource attributes array
-static inline void addResAttr(JsonArray& arr, const char* key, const String& value) {
-  JsonObject a = arr.add<JsonObject>();
-  a["key"] = key;
-  a["value"].to<JsonObject>()["stringValue"] = value;
+// ---- OTLP SpanKind constants ------------------------------------------------
+namespace SpanKind {
+  constexpr int INTERNAL = 1;
+  constexpr int SERVER   = 2;
+  constexpr int CLIENT   = 3;
+  constexpr int PRODUCER = 4;
+  constexpr int CONSUMER = 5;
+}
+
+// ---- OTLP StatusCode constants ----------------------------------------------
+namespace StatusCode {
+  constexpr int UNSET = 0;
+  constexpr int OK    = 1;
+  constexpr int ERROR = 2;
 }
 
 // ---- Tracer configuration ---------------------------------------------------
@@ -493,33 +502,29 @@ public:
   }
 
   // ---------- Span status (OTLP StatusCode) -----------------------------------
-  // UNSET=0, OK=1, ERROR=2
   Span& setStatus(int code, const String& message = "") {
-    // Clamp to valid OTLP StatusCode range to ensure spec-compliant payloads.
-    if (code < 0) {
-      statusCode_ = 0;  // UNSET
-    } else if (code > 2) {
-      statusCode_ = 2;  // ERROR
-    } else {
+    if (code >= StatusCode::UNSET && code <= StatusCode::ERROR) {
       statusCode_ = code;
+    } else {
+      statusCode_ = StatusCode::UNSET;
+      Serial.printf("[otel] WARNING: invalid status code %d, defaulting to UNSET\n", code);
     }
     statusMessage_ = message;
     return *this;
   }
   Span& setError(const String& message = "") {
-    return setStatus(2, message);
+    return setStatus(StatusCode::ERROR, message);
   }
   Span& setOk() {
-    return setStatus(1);
+    return setStatus(StatusCode::OK);
   }
 
   // ---------- Span kind (OTLP SpanKind) --------------------------------------
-  // INTERNAL=1, SERVER=2, CLIENT=3, PRODUCER=4, CONSUMER=5
   Span& setKind(int kind) {
-    // Validate input to avoid emitting invalid OTLP SpanKind values.
-    // Only update kind_ if the provided value is within the allowed range.
-    if (kind >= 1 && kind <= 5) {
+    if (kind >= SpanKind::INTERNAL && kind <= SpanKind::CONSUMER) {
       kind_ = kind;
+    } else {
+      Serial.printf("[otel] WARNING: invalid span kind %d, keeping SERVER\n", kind);
     }
     return *this;
   }
@@ -659,10 +664,11 @@ public:
     }
 
     // Span status (only serialise if explicitly set)
-    if (statusCode_ != 0) {
+    if (statusCode_ != StatusCode::UNSET) {
       JsonObject status = s["status"].to<JsonObject>();
       status["code"] = statusCode_;
-      if (statusCode_ == 2 && statusMessage_.length() > 0) {
+      // Per OTLP spec, message is only meaningful for ERROR status
+      if (statusCode_ == StatusCode::ERROR && statusMessage_.length() > 0) {
         status["message"] = statusMessage_;
       }
     }
@@ -680,13 +686,6 @@ public:
   const String& spanId()  const { return spanId_;  }
 
 private:
-  // Utility to add a resource attribute
-  static inline void addResAttr(JsonArray& arr, const char* key, const String& val) {
-    JsonObject a = arr.add<JsonObject>();
-    a["key"] = key;
-    a["value"]["stringValue"] = val;
-  }
-
   static inline String u64ToStr(uint64_t v) {
     // Avoid ambiguous Arduino String(uint64_t) by formatting manually
     char buf[32];
