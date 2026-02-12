@@ -516,7 +516,7 @@ public:
       statusCode_ = code;
     } else {
       statusCode_ = StatusCode::UNSET;
-      Serial.printf("[otel] WARNING: invalid status code %d, defaulting to UNSET\n", code);
+      DBG_PRINT("[otel] WARNING: invalid status code "); DBG_PRINT(code); DBG_PRINTLN(", defaulting to UNSET");
     }
     statusMessage_ = message;
     return *this;
@@ -533,7 +533,8 @@ public:
     if (kind >= SpanKind::INTERNAL && kind <= SpanKind::CONSUMER) {
       kind_ = kind;
     } else {
-      Serial.printf("[otel] WARNING: invalid span kind %d, keeping SERVER\n", kind);
+      DBG_PRINT("[otel] WARNING: invalid span kind "); DBG_PRINT(kind);
+      DBG_PRINT(", keeping previous kind ("); DBG_PRINT(kind_); DBG_PRINTLN(")");
     }
     return *this;
   }
@@ -733,8 +734,8 @@ private:
   std::vector<Event> events_;
 
   // Span kind and status
-  int kind_ = 2;          // SERVER by default
-  int statusCode_ = 0;    // UNSET=0, OK=1, ERROR=2
+  int kind_ = SpanKind::SERVER;
+  int statusCode_ = StatusCode::UNSET;
   String statusMessage_;
 
   // RAII guard
