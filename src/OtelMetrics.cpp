@@ -21,9 +21,7 @@ static void addPointAttributes(JsonArray& attrArray,
 
 static void addCommonResource(JsonObject& resource) {
   JsonArray rattrs = resource["attributes"].to<JsonArray>();
-  addResAttr(rattrs, "service.name",        defaultServiceName());
-  addResAttr(rattrs, "service.instance.id", defaultServiceInstanceId());
-  addResAttr(rattrs, "host.name",           defaultHostName());
+  buildResourceAttributes(rattrs, defaultServiceName(), defaultServiceInstanceId(), defaultHostName());
 }
 
 static void addCommonScope(JsonObject& scope) {

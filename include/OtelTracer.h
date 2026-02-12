@@ -30,7 +30,7 @@ struct TraceContext {
   bool valid() const { return traceId.length() == 32 && spanId.length() == 16; }
 };
 
-static inline TraceContext& currentTraceContext() {
+inline TraceContext& currentTraceContext() {
   static TraceContext ctx;
   return ctx;
 }
@@ -405,11 +405,29 @@ static inline String generateSpanId() {
 
 
 
-// Add one string attribute to a resource attributes array
+// ---- Deprecated: use buildResourceAttributes() instead ----------------------
+// Kept for backwards compatibility with existing user code.
+[[deprecated("Use buildResourceAttributes() instead")]]
 static inline void addResAttr(JsonArray& arr, const char* key, const String& value) {
   JsonObject a = arr.add<JsonObject>();
   a["key"] = key;
   a["value"].to<JsonObject>()["stringValue"] = value;
+}
+
+// ---- OTLP SpanKind constants ------------------------------------------------
+namespace SpanKind {
+  constexpr int INTERNAL = 1;
+  constexpr int SERVER   = 2;
+  constexpr int CLIENT   = 3;
+  constexpr int PRODUCER = 4;
+  constexpr int CONSUMER = 5;
+}
+
+// ---- OTLP StatusCode constants ----------------------------------------------
+namespace StatusCode {
+  constexpr int UNSET = 0;
+  constexpr int OK    = 1;
+  constexpr int ERROR = 2;
 }
 
 // ---- Tracer configuration ---------------------------------------------------
@@ -418,7 +436,7 @@ struct TracerConfig {
   String scopeVersion{"0.1.0"};
 };
 
-static inline TracerConfig& tracerConfig() {
+inline TracerConfig& tracerConfig() {
   static TracerConfig cfg;
   return cfg;
 }
@@ -460,6 +478,9 @@ public:
     prevSpanId_(std::move(o.prevSpanId_)),
     attrs_(std::move(o.attrs_)),
     events_(std::move(o.events_)),
+    kind_(o.kind_),
+    statusCode_(o.statusCode_),
+    statusMessage_(std::move(o.statusMessage_)),
     ended_(o.ended_)
   {
     o.ended_ = true;          // source dtor becomes a no-op
@@ -478,6 +499,9 @@ public:
       prevSpanId_  = std::move(o.prevSpanId_);
       attrs_       = std::move(o.attrs_);
       events_      = std::move(o.events_);
+      kind_        = o.kind_;
+      statusCode_  = o.statusCode_;
+      statusMessage_ = std::move(o.statusMessage_);
       ended_       = o.ended_;
       o.ended_     = true;    // source won't end() again
       o.prevTraceId_ = "";
@@ -486,7 +510,36 @@ public:
     return *this;
   }
 
-  // ---------- NEW: span attributes API ---------------------------------------
+  // ---------- Span status (OTLP StatusCode) -----------------------------------
+  Span& setStatus(int code, const String& message = "") {
+    if (code >= StatusCode::UNSET && code <= StatusCode::ERROR) {
+      statusCode_ = code;
+    } else {
+      statusCode_ = StatusCode::UNSET;
+      DBG_PRINT("[otel] WARNING: invalid status code "); DBG_PRINT(code); DBG_PRINTLN(", defaulting to UNSET");
+    }
+    statusMessage_ = message;
+    return *this;
+  }
+  Span& setError(const String& message = "") {
+    return setStatus(StatusCode::ERROR, message);
+  }
+  Span& setOk() {
+    return setStatus(StatusCode::OK);
+  }
+
+  // ---------- Span kind (OTLP SpanKind) --------------------------------------
+  Span& setKind(int kind) {
+    if (kind >= SpanKind::INTERNAL && kind <= SpanKind::CONSUMER) {
+      kind_ = kind;
+    } else {
+      DBG_PRINT("[otel] WARNING: invalid span kind "); DBG_PRINT(kind);
+      DBG_PRINT(", keeping previous kind ("); DBG_PRINT(kind_); DBG_PRINTLN(")");
+    }
+    return *this;
+  }
+
+  // ---------- Span attributes API --------------------------------------------
   // These buffer attributes until end() and are rendered into OTLP JSON.
   Span& setAttribute(const String& key, const String& v) {
     //attrs_.push_back(Attr{key, Type::Str, v, 0, 0.0, false});
@@ -558,9 +611,7 @@ public:
 
     // resourceSpans[0].resource.attributes[...]
     JsonArray rattrs = doc["resourceSpans"][0]["resource"]["attributes"].to<JsonArray>();
-    addResAttr(rattrs, "service.name",        defaultServiceName());
-    addResAttr(rattrs, "service.instance.id", defaultServiceInstanceId());
-    addResAttr(rattrs, "host.name",           defaultHostName());
+    buildResourceAttributes(rattrs, defaultServiceName(), defaultServiceInstanceId(), defaultHostName());
 
     // instrumentation scope
     JsonObject scope = doc["resourceSpans"][0]["scopeSpans"][0]["scope"].to<JsonObject>();
@@ -572,7 +623,7 @@ public:
     s["traceId"]           = traceId_;
     s["spanId"]            = spanId_;
     s["name"]              = name_;
-    s["kind"]              = 2; // SERVER by default; adjust if you have a setter
+    s["kind"]              = kind_;
     s["startTimeUnixNano"] = u64ToStr(startNs_);
     s["endTimeUnixNano"]   = u64ToStr(endNs);
 
@@ -622,6 +673,16 @@ public:
       }
     }
 
+    // Span status (only serialise if explicitly set)
+    if (statusCode_ != StatusCode::UNSET) {
+      JsonObject status = s["status"].to<JsonObject>();
+      status["code"] = statusCode_;
+      // Per OTLP spec, message is only meaningful for ERROR status
+      if (statusCode_ == StatusCode::ERROR && statusMessage_.length() > 0) {
+        status["message"] = statusMessage_;
+      }
+    }
+
     // Send
     OTelSender::sendJson("/v1/traces", doc);
 
@@ -635,13 +696,6 @@ public:
   const String& spanId()  const { return spanId_;  }
 
 private:
-  // Utility to add a resource attribute
-  static inline void addResAttr(JsonArray& arr, const char* key, const String& val) {
-    JsonObject a = arr.add<JsonObject>();
-    a["key"] = key;
-    a["value"]["stringValue"] = val;
-  }
-
   static inline String u64ToStr(uint64_t v) {
     // Avoid ambiguous Arduino String(uint64_t) by formatting manually
     char buf[32];
@@ -675,9 +729,14 @@ private:
   String prevTraceId_;
   String prevSpanId_;
 
-  // NEW: buffers
+  // Buffers
   std::vector<Attr>  attrs_;
   std::vector<Event> events_;
+
+  // Span kind and status
+  int kind_ = SpanKind::SERVER;
+  int statusCode_ = StatusCode::UNSET;
+  String statusMessage_;
 
   // RAII guard
   bool ended_ = false;

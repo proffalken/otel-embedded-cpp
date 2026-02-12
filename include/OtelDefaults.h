@@ -138,11 +138,45 @@ struct OTelResourceConfig {
 // -------------------------------------------------------------------------------------------------
 
 /** Default resource for general use (metrics/logs/etc.) */
-static inline OTelResourceConfig& defaultResource() {
+inline OTelResourceConfig& defaultResource() {
   static OTelResourceConfig rc;
   return rc;
 }
 
+
+/**
+ * Build resource attributes into an OTLP JSON attributes array.
+ * Merges runtime defaultResource() values with compile-time fallbacks.
+ * Runtime values always win over fallbacks.
+ */
+inline void buildResourceAttributes(JsonArray& attrs,
+  const String& fallbackServiceName,
+  const String& fallbackInstanceId,
+  const String& fallbackHostName)
+{
+  // Pre-constructed keys to avoid per-call temporary String heap allocations
+  static const String kServiceName("service.name");
+  static const String kServiceInstanceId("service.instance.id");
+  static const String kHostName("host.name");
+
+  const auto& res = defaultResource();
+
+  // Add compile-time fallbacks only for keys not set at runtime
+  if (res.attrs.find(kServiceName) == res.attrs.end()) {
+    serializeKeyValue(attrs, kServiceName, fallbackServiceName);
+  }
+  if (res.attrs.find(kServiceInstanceId) == res.attrs.end()) {
+    serializeKeyValue(attrs, kServiceInstanceId, fallbackInstanceId);
+  }
+  if (res.attrs.find(kHostName) == res.attrs.end()) {
+    serializeKeyValue(attrs, kHostName, fallbackHostName);
+  }
+
+  // Add all runtime resource attributes (overrides included)
+  for (const auto& p : res.attrs) {
+    serializeKeyValue(attrs, p.first, p.second);
+  }
+}
 
 } // namespace OTel
 

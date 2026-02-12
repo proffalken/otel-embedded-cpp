@@ -8,7 +8,7 @@
 #include <ArduinoJson.h>
 #include "OtelDefaults.h"   // expects: nowUnixNano()
 #include "OtelSender.h"     // expects: OTelSender::sendJson(path, doc)
-#include "OtelTracer.h"     // reuses: u64ToStr(), defaultServiceName(), defaultServiceInstanceId(), defaultHostName(), addResAttr()
+#include "OtelTracer.h"     // reuses: u64ToStr(), defaultServiceName(), defaultServiceInstanceId(), defaultHostName()
 
 namespace OTel {
 
@@ -18,13 +18,13 @@ struct MetricsScopeConfig {
   String scopeVersion{"0.1.0"};
 };
 
-static inline MetricsScopeConfig& metricsScopeConfig() {
+inline MetricsScopeConfig& metricsScopeConfig() {
   static MetricsScopeConfig cfg;
   return cfg;
 }
 
 // ---- Default metric labels (merged into each datapoint's attributes) --------
-static inline std::map<String, String>& defaultMetricLabels() {
+inline std::map<String, String>& defaultMetricLabels() {
   static std::map<String, String> labels;
   return labels;
 }
