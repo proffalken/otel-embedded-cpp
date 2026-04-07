@@ -21,7 +21,7 @@ static void addPointAttributes(JsonArray& attrArray,
 
 static void addCommonResource(JsonObject& resource) {
   auto &res = OTel::defaultResource();
-  if (!res.attrs.empty()) {
+  if (!res.empty()) {
     res.addResourceAttributes(resource);
     return;
   }
