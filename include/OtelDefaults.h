@@ -138,13 +138,11 @@ struct OTelResourceConfig {
 // -------------------------------------------------------------------------------------------------
 
 /** Default resource for general use (metrics/logs/etc.) */
-static inline OTelResourceConfig& defaultResource() {
+inline OTelResourceConfig& defaultResource() {
   static OTelResourceConfig rc;
   return rc;
 }
 
-
 } // namespace OTel
 
 #endif // OTEL_DEFAULTS_H
-

@@ -20,6 +20,12 @@ static void addPointAttributes(JsonArray& attrArray,
 }
 
 static void addCommonResource(JsonObject& resource) {
+  auto &res = OTel::defaultResource();
+  if (!res.attrs.empty()) {
+    res.addResourceAttributes(resource);
+    return;
+  }
+
   JsonArray rattrs = resource["attributes"].to<JsonArray>();
   addResAttr(rattrs, "service.name",        defaultServiceName());
   addResAttr(rattrs, "service.instance.id", defaultServiceInstanceId());
