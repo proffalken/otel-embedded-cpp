@@ -26,22 +26,5 @@
 #define OTEL_DEPLOY_ENV "dev"
 #endif
 
-namespace OTel {
-  using Logger = OTelLogger;
-  using Tracer = OTelTracer;
-  using Gauge = OTelGauge;
-  using Counter = OTelCounter;
-  using Histogram = OTelHistogram;
-  using ResourceConfig = OTelResourceConfig;
-
-  inline OTelResourceConfig getDefaultResource() {
-    return OTelResourceConfig(
-      OTEL_SERVICE_NAME,
-      OTEL_SERVICE_NAMESPACE,
-      OTEL_SERVICE_VERSION,
-      OTEL_SERVICE_INSTANCE,
-      OTEL_DEPLOY_ENV
-    );
-  }
-}
+// OTel::Logger, OTel::Tracer, OTel::Metrics are defined in their respective headers above.
 

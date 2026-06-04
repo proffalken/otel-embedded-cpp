@@ -1,8 +1,6 @@
 #include <Arduino.h>
 
-// ——————————————————————————————————————————————————————————
-// Platform‐specific networking includes
-// ——————————————————————————————————————————————————————————
+// ── Platform networking ───────────────────────────────────────────────────────
 #if defined(ESP8266)
   #include <ESP8266WiFi.h>
   #include <ESP8266HTTPClient.h>
@@ -10,41 +8,35 @@
   #include <WiFi.h>
   #include <HTTPClient.h>
 #else
-  #error "Unsupported platform: must be ESP8266, ESP32 or RP2040"
+  #error "Unsupported platform: must be ESP8266, ESP32, or RP2040"
 #endif
 
-// NTP / time
 #include <time.h>
 
-// For PRNG seeding
 #if defined(ARDUINO_ARCH_ESP32)
   #include <esp_system.h>
 #endif
 
-// OTLP library
-#include "OtelDefaults.h"
 #include "OtelSender.h"
 #include "OtelLogger.h"
 #include "OtelTracer.h"
 #include "OtelMetrics.h"
 
-// ————————————————————————————————————————————————
-// Build‐time defaults (override with -D OTEL_* flags)
-// ————————————————————————————————————————————————
-#ifndef OTEL_WIFI_SSID
-#define OTEL_WIFI_SSID     "default"
+// ── Build-time defaults (override via -D flags in platformio.ini) ─────────────
+
+#ifndef WIFI_SSID
+#define WIFI_SSID "default"
 #endif
 
-#ifndef OTEL_WIFI_PASS
-#define OTEL_WIFI_PASS     "default"
+#ifndef WIFI_PASS
+#define WIFI_PASS "default"
 #endif
 
-#ifndef OTEL_COLLECTOR_HOST
-#define OTEL_COLLECTOR_HOST "http://192.168.1.100:4318"
-#endif
+// Collector endpoint — set OTEL_EXPORTER_OTLP_ENDPOINT (standard) or the
+// legacy OTEL_COLLECTOR_BASE_URL.  See OtelSender.h for full priority chain.
 
 #ifndef OTEL_SERVICE_NAME
-#define OTEL_SERVICE_NAME    "demo_service"
+#define OTEL_SERVICE_NAME "demo_service"
 #endif
 
 #ifndef OTEL_SERVICE_INSTANCE
@@ -60,91 +52,69 @@
 #endif
 
 #ifndef OTEL_DEPLOY_ENV
-#define OTEL_DEPLOY_ENV      "dev"
+#define OTEL_DEPLOY_ENV "dev"
 #endif
 
-// Delay between heartbeats (ms)
+// ─────────────────────────────────────────────────────────────────────────────
+
 static constexpr uint32_t HEARTBEAT_INTERVAL = 5000;
 
 void setup() {
   Serial.begin(115200);
 
-  // ——————————
-  // 0) Seed the PRNG for truly fresh IDs each boot
-  // ——————————
+  // Connect to Wi-Fi
+  Serial.printf("Connecting to %s\n", WIFI_SSID);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print('.');
+  }
+  Serial.println("\nWi-Fi connected");
+
+  // Sync NTP so telemetry timestamps are meaningful
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+  Serial.print("Waiting for NTP");
+  while (time(nullptr) < 1609459200UL) {
+    delay(500);
+    Serial.print('.');
+  }
+  Serial.println();
+
+  // Seed PRNG for fresh trace IDs each boot
 #if defined(ARDUINO_ARCH_ESP32)
   randomSeed(esp_random());
 #else
   randomSeed(micros());
 #endif
 
-  // 1) Connect to Wi-Fi
-  Serial.printf("Connecting to %s …\n", OTEL_WIFI_SSID);
-  WiFi.begin(OTEL_WIFI_SSID, OTEL_WIFI_PASS);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print('.');
-  }
-  Serial.println("\nWi-Fi connected!");
+  // Initialise tracer and metrics (scopeName, scopeVersion)
+  OTel::Tracer::begin("otel-embedded", OTEL_SERVICE_VERSION);
+  OTel::Metrics::begin("otel-embedded", OTEL_SERVICE_VERSION);
 
-  // 2) Sync NTP (configTime works on Pico W, ESP32 & ESP8266 in Arduino land)
-  //    We're polling until we get something > Jan 1 2020 (1609459200).
-  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-  Serial.print("Waiting NTP sync");
-  while (time(nullptr) < 1609459200UL) {
-    Serial.print('.');
-    delay(500);
-  }
-  Serial.println();
+  // Tag every metric datapoint with deployment metadata
+  OTel::Metrics::setDefaultMetricLabel("deploy.environment", OTEL_DEPLOY_ENV);
+  OTel::Metrics::setDefaultMetricLabel("service.namespace",  OTEL_SERVICE_NAMESPACE);
 
-  // 3) (Optional) print the calendar time
-  {
-    time_t now = time(nullptr);
-    struct tm tm;
-    gmtime_r(&now, &tm);
-    Serial.printf("NTP time: %s", asctime(&tm));
-  }
+  // On RP2040, start the core-1 async send worker after Wi-Fi is ready
+#if defined(ARDUINO_ARCH_RP2040)
+  OTelSender::beginAsyncWorker();
+#endif
 
-  // 4) Init your OTLP logger & tracer
-  OTel::Logger::begin(
-    OTEL_SERVICE_NAME,
-    OTEL_SERVICE_NAMESPACE,
-    OTEL_SERVICE_INSTANCE,
-    OTEL_SERVICE_INSTANCE,
-    OTEL_SERVICE_VERSION
-  );
-
-  OTel::Tracer::begin(
-    OTEL_SERVICE_NAME,
-    OTEL_SERVICE_NAMESPACE,
-    OTEL_SERVICE_INSTANCE,
-    OTEL_SERVICE_VERSION
-  );
-  Serial.println("OTLP Logger ready");
+  Serial.println("OTel ready");
 }
 
 void loop() {
-  // Print the calendar time
-  {
-    time_t now = time(nullptr);
-    struct tm tm;
-    gmtime_r(&now, &tm);
-    Serial.printf("NTP time: %s", asctime(&tm));
-  }
-
-  // Start a new trace span called "heartbeat"
+  // Open a trace span
   auto span = OTel::Tracer::startSpan("heartbeat");
 
-  // Emit a simple INFO log
+  // Log correlated to the active span
   OTel::Logger::logInfo("Heartbeat event");
 
-  // Record a gauge
-  static OTel::OTelGauge heartbeatGauge("heartbeat.gauge", "1");
-  heartbeatGauge.set(1.0f);
+  // Gauge: current value (no temporality)
+  OTel::Metrics::gauge("heartbeat.uptime_seconds",
+                       static_cast<double>(millis() / 1000), "s");
 
-  // End the trace span (this actually sends the trace)
   span.end();
 
   delay(HEARTBEAT_INTERVAL);
 }
-

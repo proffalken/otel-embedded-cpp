@@ -1,6 +1,6 @@
 {
   "name": "otel-embedded-cpp",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "OpenTelemetry logging, tracing, and metrics for embedded C++ devices (ESP32, RP2040 Pico W, ESP8266).",
   "keywords": [
     "OpenTelemetry",
@@ -31,10 +31,38 @@
     {
       "name": "ArduinoJson",
       "version": "^7.0.0"
+    },
+    {
+      "name": "nanopb/Nanopb",
+      "version": "^0.4.91"
+    },
+    {
+      "name": "aodtorusan/opentelemetry_proto",
+      "version": "^1.9.0"
     }
   ],
+  "build": {
+    "srcFilter": ["+<*.cpp>", "-<main.cpp>"]
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/otel-embedded-cpp.git"
-  }
+    "url": "https://github.com/proffalken/otel-embedded-cpp.git"
+  },
+  "examples": [
+    {
+      "name": "Basic",
+      "base": "examples/basic",
+      "files": ["main.cpp", "README.md"]
+    },
+    {
+      "name": "Direct OTLP",
+      "base": "examples/direct_otlp",
+      "files": ["main.cpp", "README.md"]
+    },
+    {
+      "name": "Protobuf OTLP",
+      "base": "examples/proto_otlp",
+      "files": ["main.cpp"]
+    }
+  ]
 }

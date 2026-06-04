@@ -10,6 +10,7 @@
 #include "OtelDebug.h"
 #include "OtelDefaults.h"   // expects: nowUnixNano()
 #include "OtelSender.h"     // expects: OTelSender::sendJson(const char* path, const JsonDocument&)
+#include "OtelProtoEncoder.h"
 
 #if defined(ESP32)
   #include <esp_system.h>   // esp_random, esp_fill_random
@@ -23,33 +24,49 @@
 
 namespace OTel {
     
-// ---- Active Trace Context ---------------------------------------------------
+/**
+ * Active W3C trace context (traceId + spanId) for the current execution scope.
+ * Updated automatically when a @c Span is created or destroyed.
+ */
 struct TraceContext {
   String traceId;  // 32 hex chars
   String spanId;   // 16 hex chars
+  /** @return True when both IDs have the correct lengths per the W3C spec. */
   bool valid() const { return traceId.length() == 32 && spanId.length() == 16; }
 };
 
-static inline TraceContext& currentTraceContext() {
+/** Returns the process-wide active TraceContext singleton. */
+inline TraceContext& currentTraceContext() {
   static TraceContext ctx;
   return ctx;
 }
 
-// --- New: Context Propagation (extract + scope) ------------------------------
+/**
+ * Result of extracting a remote trace context from inbound headers or a payload.
+ * Pass to @c RemoteParentScope to make it the active context for child spans.
+ */
 struct ExtractedContext {
   TraceContext ctx;
   String tracestate;   // optional; unused for now but kept for future injection
   bool sampled = true; // from flags; default true if unknown
+  /** @return True when the embedded TraceContext is valid. */
   bool valid() const { return ctx.valid(); }
 };
 
-// Simple key/value view for header-like maps (HTTP headers, MQTT user props)
+/**
+ * Thin abstraction over a key/value lookup used by context propagators.
+ * Wrap HTTP headers, MQTT user properties, or any string-keyed map.
+ */
 struct KeyValuePairs {
-  // Provide a lambda to look up case-insensitive keys. Returns empty String if missing.
+  /** Callable that returns the value for a key, or an empty String if absent. */
   std::function<String(const String&)> get;
 };
 
-// W3C "traceparent": 00-<32 hex traceId>-<16 hex parentId>-<2 hex flags>
+/**
+ * Parse a W3C @c traceparent header value into @p out.
+ * Format: "00-<32 hex traceId>-<16 hex parentId>-<2 hex flags>".
+ * @return True on success, false if the string is malformed.
+ */
 static inline bool parseTraceparent(const String& tp, ExtractedContext& out) {
   // Minimal, allocation-light parser
   // Expect 55 chars with version "00" or at least the 4 parts separated by '-'
@@ -72,7 +89,11 @@ static inline bool parseTraceparent(const String& tp, ExtractedContext& out) {
   return out.valid();
 }
 
-// B3 single header: b3 = traceId-spanId-sampled
+/**
+ * Parse a B3 single-header value into @p out.
+ * Format: "<32 hex traceId>-<16 hex spanId>[-<sampling flag>]".
+ * @return True on success, false if the string is malformed.
+ */
 static inline bool parseB3Single(const String& b3, ExtractedContext& out) {
   // Minimal split (traceId-spanId-[sampling?])
   int p1 = b3.indexOf('-'); if (p1 < 0) return false;
@@ -89,8 +110,18 @@ static inline bool parseB3Single(const String& b3, ExtractedContext& out) {
   return out.valid();
 }
 
+/**
+ * W3C TraceContext and B3 context propagation helpers.
+ * Use @c extract() / @c extractFromJson() to read a remote parent context
+ * and @c inject() / @c injectToJson() / @c injectToHeaders() to forward it.
+ */
 struct Propagators {
-  // 1) Extract from header-like key/values (HTTP headers, MQTT v5 user props)
+  /**
+   * Extract a remote trace context from header-like key/value pairs.
+   * Tries W3C @c traceparent first, then B3 single-header as a fallback.
+   * @param kv  Wrapper providing a case-insensitive key lookup.
+   * @return    Extracted context; check @c valid() before use.
+   */
   static ExtractedContext extract(const KeyValuePairs& kv) {
     ExtractedContext out;
 
@@ -111,14 +142,19 @@ struct Propagators {
     return out; // invalid
   }
 
-  // 2) Extract directly from JSON payload
+  /**
+   * Extract a remote trace context from a JSON payload string.
+   * Recognises @c traceparent, @c trace_id/@c span_id, and @c b3 fields.
+   * @param json  Serialised JSON string.
+   * @return      Extracted context; check @c valid() before use.
+   */
   static ExtractedContext extractFromJson(const String& json) {
     ExtractedContext out;
     if (json.length() == 0) return out;
 
     // Use a small document to avoid heap bloat; adjust if payloads are larger
     JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, json);
+    DeserializationError err = deserializeJson(doc, json.c_str());
     if (err) return out;
 
     if (doc["traceparent"].is<const char*>()) {
@@ -155,11 +191,14 @@ struct Propagators {
     return out; // invalid if none matched
   }
 
-// --- ADD these inside: struct OTel::Propagators { ... } ---
-
-// Generic injector: pass a setter that accepts (key, value).
-template <typename Setter>
-static inline void inject(Setter set, uint8_t flags = 0x01) {
+  /**
+   * Inject the active trace context into any key/value store via a setter callable.
+   * Writes a W3C @c traceparent value.  No-op if no active span is present.
+   * @param set    Callable accepting @c (const char* key, const char* value).
+   * @param flags  W3C trace flags byte (bit 0 = sampled; default 0x01).
+   */
+  template <typename Setter>
+  static inline void inject(Setter set, uint8_t flags = 0x01) {
   const auto& ctx = OTel::currentTraceContext();
 
   // Only inject if we actually have a valid active context
@@ -180,21 +219,35 @@ static inline void inject(Setter set, uint8_t flags = 0x01) {
   // If you add tracestate in future, you can forward it here.
 }
 
-// Convenience: inject into ArduinoJson JsonDocument payloads
-static inline void injectToJson(JsonDocument& doc, uint8_t flags = 0x01) {
+  /**
+   * Inject the active trace context as a @c traceparent key into an ArduinoJson document.
+   * @param doc    JSON document to write into.
+   * @param flags  W3C trace flags byte.
+   */
+  static inline void injectToJson(JsonDocument& doc, uint8_t flags = 0x01) {
   inject([&](const char* k, const char* v){ doc[k] = v; }, flags);
 }
 
-// Convenience: inject into HTTP headers via a generic adder (e.g., http.addHeader)
-template <typename HeaderAdder>
-static inline void injectToHeaders(HeaderAdder add, uint8_t flags = 0x01) {
+  /**
+   * Inject the active trace context into HTTP headers via a generic adder callable.
+   * @param add    Callable accepting @c (const char* name, const char* value)
+   *               — e.g. pass @c http.addHeader directly.
+   * @param flags  W3C trace flags byte.
+   */
+  template <typename HeaderAdder>
+  static inline void injectToHeaders(HeaderAdder add, uint8_t flags = 0x01) {
   inject(add, flags);
 }
 
 
 };
 
-// RAII helper: temporarily install a remote parent context as the active one
+/**
+ * RAII guard that installs a remote parent context as the active TraceContext
+ * for the duration of its lifetime, then restores the previous context on
+ * destruction.  Use when processing inbound requests or messages that carry
+ * a W3C traceparent so child spans are linked to the upstream trace.
+ */
 class RemoteParentScope {
 public:
   RemoteParentScope(const TraceContext& incoming) {
@@ -220,6 +273,8 @@ private:
 
 
 // ---- Utilities --------------------------------------------------------------
+
+/** Convert uint64 to its decimal String representation without printf (RP2040-safe). */
 static inline String u64ToStr(uint64_t v) {
   // Avoid ambiguous String(uint64_t) on some cores
   char buf[32];
@@ -232,8 +287,7 @@ static inline String u64ToStr(uint64_t v) {
   }
   return String(p);
 }
-//
-// Best-effort chip id (used for defaults)
+/** Best-effort chip ID as a hex string; used as a default for service.instance.id. */
 static inline String chipIdHex() {
 #if defined(ESP8266)
   uint32_t id = ESP.getChipId();
@@ -248,7 +302,7 @@ static inline String chipIdHex() {
 #endif
 }
 
-// Defaults for resource fields (compile-time overrides win)
+/** @return Default service name from @c OTEL_SERVICE_NAME, or "embedded-service". */
 static inline String defaultServiceName() {
 #ifdef OTEL_SERVICE_NAME
   return String(OTEL_SERVICE_NAME);
@@ -256,13 +310,15 @@ static inline String defaultServiceName() {
   return String("embedded-service");
 #endif
 }
+/** @return Default service instance ID from @c OTEL_SERVICE_INSTANCE, or the chip ID hex. */
 static inline String defaultServiceInstanceId() {
-#ifdef OTEL_SERVICE_INSTANCE_ID
-  return String(OTEL_SERVICE_INSTANCE_ID);
+#ifdef OTEL_SERVICE_INSTANCE
+  return String(OTEL_SERVICE_INSTANCE);
 #else
   return chipIdHex();
 #endif
 }
+/** @return Default host name from @c OTEL_HOST_NAME, or "ESP-" + chip ID hex. */
 static inline String defaultHostName() {
 #ifdef OTEL_HOST_NAME
   return String(OTEL_HOST_NAME);
@@ -272,7 +328,11 @@ static inline String defaultHostName() {
 }
 
 // ---- Entropy + ID helpers ---------------------------------------------------
-//
+
+/**
+ * XOR a boot-time salt derived from the system clock and service instance ID
+ * into @p b to reduce cross-boot ID collisions on platforms with weak RNGs.
+ */
 static inline void mix_boot_salt(uint8_t* b, size_t len) {
   uint64_t t = nowUnixNano();
   uint32_t salt = (uint32_t)t ^ (uint32_t)(t >> 32);
@@ -294,6 +354,7 @@ static inline void mix_boot_salt(uint8_t* b, size_t len) {
 }
 
 
+/** Seed the PRNG with hardware entropy sources and mix in boot-time jitter. */
 static inline void seedEntropy() {
   uint32_t seed = 0;
 
@@ -321,6 +382,10 @@ static inline void seedEntropy() {
   for (int i = 0; i < 8; ++i) (void)random();
 }
 
+/**
+ * Fill @p out with @p len cryptographically random bytes using the best
+ * hardware source available for the target platform.
+ */
 static inline void fillRandom(uint8_t* out, size_t len) {
 #if defined(ESP32)
   esp_fill_random(out, len);
@@ -341,6 +406,7 @@ static inline void fillRandom(uint8_t* out, size_t len) {
 #endif
 }
 
+/** Encode @p len bytes of @p data as a lowercase hex string. */
 static inline String toHex(const uint8_t* data, size_t len) {
   static const char* hex = "0123456789abcdef";
   String out; out.reserve(len * 2);
@@ -351,6 +417,7 @@ static inline String toHex(const uint8_t* data, size_t len) {
   return out;
 }
 
+/** Generate a random 128-bit trace ID as a 32-char lowercase hex string. */
 static inline String generateTraceId() {
   uint8_t b[16];
   fillRandom(b, sizeof b);
@@ -381,6 +448,7 @@ static inline String generateTraceId() {
   return h;
 }
 
+/** Generate a random 64-bit span ID as a 16-char lowercase hex string. */
 static inline String generateSpanId() {
   uint8_t b[8];
   fillRandom(b, sizeof b);
@@ -405,25 +473,32 @@ static inline String generateSpanId() {
 
 
 
-// Add one string attribute to a resource attributes array
+/** Append a string-valued OTLP KeyValue object to a resource attributes array. */
 static inline void addResAttr(JsonArray& arr, const char* key, const String& value) {
   JsonObject a = arr.add<JsonObject>();
   a["key"] = key;
   a["value"].to<JsonObject>()["stringValue"] = value;
 }
 
-// ---- Tracer configuration ---------------------------------------------------
+/** Instrumentation scope name and version emitted on every trace payload. */
 struct TracerConfig {
   String scopeName{"otel-embedded"};
   String scopeVersion{"0.1.0"};
 };
 
-static inline TracerConfig& tracerConfig() {
+/** Returns the process-wide TracerConfig singleton. */
+inline TracerConfig& tracerConfig() {
   static TracerConfig cfg;
   return cfg;
 }
 
-// ---- Span -------------------------------------------------------------------
+/**
+ * A single OTLP span.  Create via @c Tracer::startSpan(); the span is
+ * automatically sent when @c end() is called or the object goes out of scope.
+ *
+ * Spans are not copyable.  They are movable so you can store them in a
+ * container or return them from a factory function.
+ */
 class Span {
 public:
   explicit Span(const String& name)
@@ -486,8 +561,7 @@ public:
     return *this;
   }
 
-  // ---------- NEW: span attributes API ---------------------------------------
-  // These buffer attributes until end() and are rendered into OTLP JSON.
+  /** @{ Add a typed attribute to the span.  Attributes are buffered until @c end(). */
   Span& setAttribute(const String& key, const String& v) {
     //attrs_.push_back(Attr{key, Type::Str, v, 0, 0.0, false});
     Attr a;
@@ -512,9 +586,12 @@ public:
   Span& setAttribute(const String& key, bool v) {
     Attr a; a.key=key; a.type=Type::Bool; a.b=v; attrs_.push_back(a); return *this;
   }
+  /** @} */
 
-  // ---------- NEW: span events API -------------------------------------------
-  // 1) Event without attributes
+  /**
+   * Record a timestamped event on this span.
+   * @param name  Human-readable event name, e.g. "cache.miss".
+   */
   Span& addEvent(const String& name) {
     //events_.push_back(Event{name, nowUnixNano(), {}});
     Event e;
@@ -523,7 +600,11 @@ public:
     events_.push_back(e);
     return *this;
   }
-  // 2) Event with simple (string) attributes — minimal footprint
+  /**
+   * Record a timestamped event with string attributes.
+   * @param name   Human-readable event name.
+   * @param attrs  Key/value pairs attached to the event.
+   */
   Span& addEvent(const String& name, const std::vector<std::pair<String,String>>& attrs) {
     //Event e{name, nowUnixNano(), {}};
     // NEW
@@ -546,13 +627,54 @@ public:
     return *this;
   }
 
-  // You can still call this manually; it's safe to call more than once.
+  /**
+   * Finalise and transmit the span to the collector.
+   * Safe to call more than once (idempotent).  Called automatically by the
+   * destructor if the user does not call it explicitly.
+   */
   void end() {
     if (ended_) return;               // idempotent guard
     ended_ = true;
 
     const uint64_t endNs = nowUnixNano();
 
+#if OTEL_EXPORTER_OTLP_PROTOCOL == OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_PROTOBUF
+    {
+      std::vector<OTel::Proto::Attr> protoAttrs;
+      protoAttrs.reserve(attrs_.size());
+      for (const auto& a : attrs_) {
+        OTel::Proto::Attr pa;
+        pa.key  = a.key;
+        pa.type = static_cast<OTel::Proto::AttrType>(static_cast<int>(a.type));
+        pa.s    = a.s;
+        pa.i    = a.i;
+        pa.d    = a.d;
+        pa.b    = a.b;
+        protoAttrs.push_back(std::move(pa));
+      }
+      std::vector<OTel::Proto::Event> protoEvents;
+      protoEvents.reserve(events_.size());
+      for (const auto& ev : events_) {
+        OTel::Proto::Event pe;
+        pe.name = ev.name;
+        pe.t    = ev.t;
+        pe.attrs.reserve(ev.attrs.size());
+        for (const auto& a : ev.attrs) {
+          OTel::Proto::Attr pa;
+          pa.key  = a.key;
+          pa.type = static_cast<OTel::Proto::AttrType>(static_cast<int>(a.type));
+          pa.s    = a.s;
+          pa.i    = a.i;
+          pa.d    = a.d;
+          pa.b    = a.b;
+          pe.attrs.push_back(std::move(pa));
+        }
+        protoEvents.push_back(std::move(pe));
+      }
+      OTel::Proto::sendSpan(name_, traceId_, spanId_, prevSpanId_,
+                            startNs_, endNs, protoAttrs, protoEvents);
+    }
+#else
     // Build minimal OTLP/HTTP JSON payload for a single span
     JsonDocument doc;
 
@@ -624,6 +746,7 @@ public:
 
     // Send
     OTelSender::sendJson("/v1/traces", doc);
+#endif  // OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_PROTOBUF
 
     // Restore previous active context
     currentTraceContext().traceId = prevTraceId_;
@@ -683,9 +806,21 @@ private:
   bool ended_ = false;
 };
 
-// ---- Tracer facade ----------------------------------------------------------
+/**
+ * Static façade for creating OTLP spans.
+ *
+ * Call @c begin() once after connecting to Wi-Fi to seed the PRNG and set the
+ * instrumentation scope name/version.  Then call @c startSpan() to instrument
+ * any operation.
+ */
 class Tracer {
 public:
+  /**
+   * Initialise the tracer: seed entropy, clear any stale context, and
+   * configure the instrumentation scope.
+   * @param scopeName    Library/component name, e.g. "my-firmware".
+   * @param scopeVersion Semver string, e.g. "1.0.0".
+   */
   static void begin(const String& scopeName, const String& scopeVersion) {
     seedEntropy();
 
@@ -697,6 +832,11 @@ public:
     tracerConfig().scopeVersion = scopeVersion;
   }
 
+  /**
+   * Start a new span.  If a span is already active its IDs become the parent.
+   * @param name  Human-readable operation name, e.g. "mqtt.publish".
+   * @return      A @c Span object; call @c end() or let it go out of scope.
+   */
   static Span startSpan(const String& name) {
     return Span(name);
   }

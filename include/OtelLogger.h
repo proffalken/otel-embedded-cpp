@@ -12,7 +12,12 @@
 
 namespace OTel {
 
-// ---- Severity mapping -------------------------------------------------------
+/**
+ * Map a severity text string to its OTLP severityNumber enum value.
+ * Follows the OpenTelemetry Log Data Model specification.
+ * @param s  Severity string: "TRACE", "DEBUG", "INFO", "WARN", "ERROR", or "FATAL".
+ * @return   OTLP integer severity number, or 0 if unknown.
+ */
 static inline int severityNumberFromText(const String& s) {
   if (s == "TRACE") return 1;
   if (s == "DEBUG") return 5;
@@ -23,39 +28,66 @@ static inline int severityNumberFromText(const String& s) {
   return 0;
 }
 
-// ---- Instrumentation scope for logs -----------------------------------------
+/** Instrumentation scope name and version emitted on every log payload. */
 struct LogScopeConfig {
   String scopeName{"otel-embedded-cpp"};
   String scopeVersion{""}; // optional
 };
-static inline LogScopeConfig& logScopeConfig() {
+
+/** Returns the process-wide LogScopeConfig singleton. */
+inline LogScopeConfig& logScopeConfig() {
   static LogScopeConfig cfg;
   return cfg;
 }
 
-// ---- Default labels (merged into each log record's attributes) --------------
-static inline std::map<String, String>& defaultLabels() {
+/** Returns the process-wide default log labels map (merged into every log record). */
+inline std::map<String, String>& defaultLabels() {
   static std::map<String, String> labels;
   return labels;
 }
 
+/**
+ * Static façade for emitting OTLP log records.
+ *
+ * Automatically correlates log records with the currently active span
+ * (traceId / spanId) when called from within a @c Span's lifetime.
+ */
 class Logger {
 public:
-  // Set/merge defaults
+  /**
+   * Replace the full set of default labels added to every log record.
+   * @param labels Map of attribute key/value pairs.
+   */
   static void setDefaultLabels(const std::map<String, String>& labels) {
     defaultLabels() = labels;
   }
+
+  /**
+   * Set or update a single default label added to every log record.
+   * @param key   Attribute key.
+   * @param value Attribute value.
+   */
   static void setDefaultLabel(const String& key, const String& value) {
     defaultLabels()[key] = value;
   }
 
-  // Map-based API
+  /**
+   * Emit a log record at the given severity.
+   * @param severity  Severity string ("TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL").
+   * @param message   Log body text.
+   * @param labels    Per-call attributes merged on top of default labels.
+   */
   static void log(const String& severity, const String& message,
                   const std::map<String,String>& labels = {}) {
     buildAndSend(severity, message, labels);
   }
 
-  // Convenience overload: initializer_list of key/value pairs
+  /**
+   * Emit a log record using an initializer-list of attributes.
+   * @param severity  Severity string.
+   * @param message   Log body text.
+   * @param kvs       Brace-enclosed attribute pairs, e.g. {{"key","val"}}.
+   */
   static void log(const String& severity, const String& message,
                   std::initializer_list<std::pair<const char*, const char*>> kvs) {
     std::map<String, String> labels;
@@ -63,7 +95,7 @@ public:
     buildAndSend(severity, message, labels);
   }
 
-  // Helpers by severity
+  /** @{ Convenience helpers that hard-code the severity level. */
   static void logTrace(const String &m, const std::map<String,String> &l = {}) { log("TRACE", m, l); }
   static void logDebug(const String &m, const std::map<String,String> &l = {}) { log("DEBUG", m, l); }
   static void logInfo (const String &m, const std::map<String,String> &l = {}) { log("INFO",  m, l); }
@@ -77,11 +109,22 @@ public:
   static void logWarn (const String &m, std::initializer_list<std::pair<const char*,const char*>> kvs) { log("WARN",  m, kvs); }
   static void logError(const String &m, std::initializer_list<std::pair<const char*,const char*>> kvs) { log("ERROR", m, kvs); }
   static void logFatal(const String &m, std::initializer_list<std::pair<const char*,const char*>> kvs) { log("FATAL", m, kvs); }
+  /** @} */
 
 private:
+  /** Build the OTLP log payload and hand it to OTelSender. */
   static void buildAndSend(const String& severity, const String& message,
                            const std::map<String,String>& labels)
   {
+#if OTEL_EXPORTER_OTLP_PROTOCOL == OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_PROTOBUF
+    {
+      auto& ctx = currentTraceContext();
+      OTel::Proto::sendLog(severity, severityNumberFromText(severity), message,
+                           labels, defaultLabels(),
+                           ctx.valid() ? ctx.traceId : String(""),
+                           ctx.valid() ? ctx.spanId  : String(""));
+    }
+#else
     // Build OTLP/HTTP logs payload (ArduinoJson v7)
     JsonDocument doc;
 
@@ -136,10 +179,10 @@ private:
 
     // Send
     OTelSender::sendJson("/v1/logs", doc);
+#endif  // OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_PROTOBUF
   }
 };
 
 } // namespace OTel
 
 #endif // OTEL_LOGGER_H
-

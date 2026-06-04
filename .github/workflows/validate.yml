@@ -5,31 +5,32 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch: # allow manual runs from the GitHub Actions tab
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
       - name: Install PlatformIO
         run: python -m pip install -U platformio
 
-      # Make repo Variables + Secrets available to all subsequent steps
+      # Expose repo variables and secrets as environment variables for PlatformIO
+      # sysenv.* references in platformio.ini build_flags pick these up at build time.
       - name: Export env for build
         run: |
           echo "::add-mask::${{ secrets.WIFI_PASS }}"
           {
             echo "WIFI_SSID=${{ vars.WIFI_SSID }}"
             echo "WIFI_PASS=${{ secrets.WIFI_PASS }}"
-            echo "OTEL_COLLECTOR_HOST=${{ vars.OTEL_COLLECTOR_HOST }}"
-            echo "OTEL_COLLECTOR_PORT=${{ vars.OTEL_COLLECTOR_PORT }}"
+            echo "OTEL_EXPORTER_OTLP_ENDPOINT=${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT || '' }}"
             echo "OTEL_SERVICE_NAME=${{ vars.OTEL_SERVICE_NAME }}"
             echo "OTEL_SERVICE_NAMESPACE=${{ vars.OTEL_SERVICE_NAMESPACE }}"
             echo "OTEL_SERVICE_VERSION=${{ vars.OTEL_SERVICE_VERSION }}"
@@ -38,14 +39,63 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: PlatformIO Update
-        run: pio update
+        run: pio pkg update
 
-      - name: Build for ESP32 (esp32dev)
+      # Remove any cached registry version so --lib "." always wins and we
+      # compile the local source, not the published package at the same version.
+      - name: Flush cached library
+        run: pio pkg uninstall --global --library "otel-embedded-cpp" 2>/dev/null || true
+
+      # ── Native unit tests (host GCC, no hardware required) ──────────────────
+      # Compiles and runs test/native/test_otlp.cpp against a fake OTelSender
+      # that captures emitted JSON so tests can assert on payload structure.
+      # GCC is pre-installed on ubuntu-latest; no extra toolchain step needed.
+
+      - name: Run native unit tests
+        run: pio test -e native
+
+      # ── src/main.cpp (existing integration test) ───────────────────────────
+
+      - name: Build src for ESP32 (esp32dev)
         run: platformio ci src/main.cpp --project-conf platformio.ini --lib "." -e esp32dev
 
-      - name: Build for Pico W (rpipicow)
+      - name: Build src for Pico W (rpipicow)
         run: platformio ci src/main.cpp --project-conf platformio.ini --lib "." -e rpipicow
 
-      - name: Build for ESP8266 (esp8266 d1_mini)
+      - name: Build src for ESP8266 (d1_mini)
         run: platformio ci src/main.cpp --project-conf platformio.ini --lib "." -e esp8266
 
+      # ── examples/basic (minimal heartbeat, collector-based setup) ────────────
+
+      - name: Build basic example for ESP32 (esp32dev)
+        run: platformio ci examples/basic/main.cpp --project-conf platformio.ini --lib "." -e esp32dev
+
+      - name: Build basic example for Pico W (rpipicow)
+        run: platformio ci examples/basic/main.cpp --project-conf platformio.ini --lib "." -e rpipicow
+
+      - name: Build basic example for ESP8266 (d1_mini)
+        run: platformio ci examples/basic/main.cpp --project-conf platformio.ini --lib "." -e esp8266
+
+      # ── examples/direct_otlp (validates OTLP exporter configuration) ─────────
+
+      - name: Build direct_otlp example for ESP32 (esp32dev)
+        run: platformio ci examples/direct_otlp/main.cpp --project-conf platformio.ini --lib "." -e esp32dev
+
+      - name: Build direct_otlp example for Pico W (rpipicow)
+        run: platformio ci examples/direct_otlp/main.cpp --project-conf platformio.ini --lib "." -e rpipicow
+
+      - name: Build direct_otlp example for ESP8266 (d1_mini)
+        run: platformio ci examples/direct_otlp/main.cpp --project-conf platformio.ini --lib "." -e esp8266
+
+      # ── examples/proto_otlp (validates protobuf encoding path) ───────────────
+      # Uses dedicated *-proto envs in platformio.ini that inherit their base
+      # env and add -DOTEL_EXPORTER_OTLP_PROTOCOL=...HTTP_PROTOBUF.
+
+      - name: Build proto_otlp example for ESP32 (esp32dev-proto)
+        run: platformio ci examples/proto_otlp/main.cpp --project-conf platformio.ini --lib "." -e esp32dev-proto
+
+      - name: Build proto_otlp example for Pico W (rpipicow-proto)
+        run: platformio ci examples/proto_otlp/main.cpp --project-conf platformio.ini --lib "." -e rpipicow-proto
+
+      - name: Build proto_otlp example for ESP8266 (esp8266-proto)
+        run: platformio ci examples/proto_otlp/main.cpp --project-conf platformio.ini --lib "." -e esp8266-proto

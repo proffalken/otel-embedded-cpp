@@ -1,6 +1,7 @@
 #ifndef OTEL_DEFAULTS_H
 #define OTEL_DEFAULTS_H
 
+#include <Arduino.h>
 #include <map>
 #include <ArduinoJson.h>
 #include <sys/time.h>  // gettimeofday()
@@ -36,7 +37,7 @@ static inline uint64_t nowUnixMillis() {
        + static_cast<uint64_t>(tv.tv_usec) / 1000ULL;
 }
 
-// Portable uint64 -> String (no printf/ULL reliance; RP2040-safe)
+/** Convert a uint64 to its decimal String representation without printf/ULL (RP2040-safe). */
 inline String u64ToString(uint64_t v) {
   if (v == 0) return String("0");
   char buf[21];               // max 20 digits + NUL
@@ -96,15 +97,21 @@ inline void serializeKeyInt(JsonArray &arr, const String &key, int64_t value) {
 struct OTelResourceConfig {
   std::map<String, String> attrs;
 
-  // Newer API
+  /** @{ Set or update a resource attribute. */
   void set(const String &k, const String &v) { attrs[k] = v; }
   void set(const char *k, const String &v)   { attrs[String(k)] = v; }
+  /** @} */
+
+  /** Remove all resource attributes. */
   void clear()                               { attrs.clear(); }
+
+  /** @return True if no resource attributes have been set. */
   bool empty() const                         { return attrs.empty(); }
 
-  // Backwards-compatible API expected by existing Metrics/Tracer code
+  /** @{ Backwards-compatible attribute setter used by Metrics/Tracer paths. */
   void setAttribute(const String &k, const String &v) { attrs[k] = v; }
   void setAttribute(const char *k, const String &v)   { attrs[String(k)] = v; }
+  /** @} */
 
   /**
    * Legacy helper used by Metrics/Tracer paths:

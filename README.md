@@ -45,10 +45,10 @@ This removes any blocking code and ensures that the HTTP POST call does not inte
 
    ```ini
    build_flags =
-     -DWIFI_SSID="${sysenv.OTEL_WIFI_SSID}"
-     -DWIFI_PASS="${sysenv.OTEL_WIFI_PASS}"
-     -DOTEL_COLLECTOR_HOST="${sysenv.OTEL_COLLECTOR_HOST}"
-     -DOTEL_COLLECTOR_PORT=${sysenv.OTEL_COLLECTOR_PORT}
+     -DWIFI_SSID="${sysenv.WIFI_SSID}"
+     -DWIFI_PASS="${sysenv.WIFI_PASS}"
+     -DOTEL_EXPORTER_OTLP_ENDPOINT="\"${sysenv.OTEL_EXPORTER_OTLP_ENDPOINT}\""
+     -DOTEL_EXPORTER_OTLP_HEADERS="\"${sysenv.OTEL_EXPORTER_OTLP_HEADERS}\""
      -DOTEL_SERVICE_NAME="${sysenv.OTEL_SERVICE_NAME}"
      -DOTEL_SERVICE_NAMESPACE="${sysenv.OTEL_SERVICE_NAMESPACE}"
      -DOTEL_SERVICE_VERSION="${sysenv.OTEL_SERVICE_VERSION}"
@@ -59,10 +59,9 @@ This removes any blocking code and ensures that the HTTP POST call does not inte
 3. **(Optional)** Use a `.env` file and load it into your shell:
 
    ```dotenv
-   OTEL_WIFI_SSID=default
-   OTEL_WIFI_PASS=default
-   OTEL_COLLECTOR_HOST=192.168.1.100
-   OTEL_COLLECTOR_PORT=4318
+   WIFI_SSID=default
+   WIFI_PASS=default
+   OTEL_EXPORTER_OTLP_ENDPOINT=http://192.168.1.100:4318
    OTEL_SERVICE_NAME=demo_service
    OTEL_SERVICE_NAMESPACE=demo_namespace
    OTEL_SERVICE_VERSION=v1.0.0
@@ -87,23 +86,19 @@ This removes any blocking code and ensures that the HTTP POST call does not inte
 
 #if defined(ESP32)
   #include <WiFi.h>
+  #include <esp_system.h>
 #elif defined(ESP8266)
   #include <ESP8266WiFi.h>
 #elif defined(ARDUINO_ARCH_RP2040)
-  // Earle Philhower’s Arduino-Pico core exposes a WiFi.h for Pico W
   #include <WiFi.h>
 #else
   #error "This example targets ESP32, ESP8266, or RP2040 (Pico W) with WiFi."
 #endif
 
-// ---------------------------------------------------------
-// Import Open Telemetry Libraries
-// ---------------------------------------------------------
-#include "OtelDefaults.h"
+#include "OtelSender.h"
 #include "OtelTracer.h"
 #include "OtelLogger.h"
 #include "OtelMetrics.h"
-#include "OtelDebug.h"
 
 static constexpr uint32_t HEARTBEAT_INTERVAL = 5000;
 
@@ -111,52 +106,39 @@ void setup() {
   Serial.begin(115200);
 
   // Seed PRNG (fresh trace IDs each boot)
-  #if defined(ARDUINO_ARCH_ESP32)
-    randomSeed(esp_random());
-  #else
-    randomSeed(micros());
-  #endif
+#if defined(ARDUINO_ARCH_ESP32)
+  randomSeed(esp_random());
+#else
+  randomSeed(micros());
+#endif
 
-  // Connect to Wi‑Fi
-  WiFi.begin(OTEL_WIFI_SSID, OTEL_WIFI_PASS);
+  // Connect to Wi-Fi
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
   while (WiFi.status() != WL_CONNECTED) { delay(500); }
 
   // Sync NTP
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
   while (time(nullptr) < 1609459200UL) { delay(500); }
 
-  // Initialise Logger & Tracer
-  
-  // Set the defaults for the resources
-  auto &res = OTel::defaultResource();
-  res.set("service",        OTEL_SERVICE_NAME);
-  res.set("service.name",        OTEL_SERVICE_NAME);
-  res.set("service.namespace",   OTEL_SERVICE_NAMESPACE);
-  res.set("service.instance.id", OTEL_SERVICE_INSTANCE);
-  res.set("host.name", "my-embedded device");
+  // Initialise tracer and metrics (scopeName, scopeVersion)
+  OTel::Tracer::begin("otel-embedded", "1.0.0");
+  OTel::Metrics::begin("otel-embedded", "1.0.0");
 
-  // Setup our tracing engine
-  OTel::Tracer::begin("otel-embedded", "1.0.1");
-
-  // Make sure that we start with empty trace and span ID's
-  OTel::currentTraceContext().traceId = "";
-  OTel::currentTraceContext().spanId  = "";
-
-  // Setup the metrics engine
-  OTel::Metrics::begin("otel-embedded", "1.0.1");
-  OTel::Metrics::setDefaultMetricLabel("device.role", "test-device");
-  OTel::Metrics::setDefaultMetricLabel("device.id", "device-chip-id-or-mac");
+  // On RP2040, start the core-1 async send worker after Wi-Fi is ready
+#if defined(ARDUINO_ARCH_RP2040)
+  OTelSender::beginAsyncWorker();
+#endif
 }
 
 void loop() {
-  // Heartbeat trace
   auto span = OTel::Tracer::startSpan("heartbeat");
 
   OTel::Logger::logInfo("Heartbeat event");
-  static OTel::OTelGauge gauge("heartbeat.gauge", "1");
-  gauge.set(1.0f);
-  span.end();
 
+  OTel::Metrics::gauge("heartbeat.uptime_seconds",
+                       static_cast<double>(millis() / 1000), "s");
+
+  span.end();
   delay(HEARTBEAT_INTERVAL);
 }
 ```
@@ -164,8 +146,8 @@ void loop() {
 This will emit:
 
 * **Traces** for each `startSpan("heartbeat")`
-* **Logs** with `service.*` resource attributes
-* **Metrics** via `OTelGauge`, `OTelCounter` and `OTelHistogram`
+* **Logs** correlated to the active span via `traceId`/`spanId`
+* **Metrics** as a gauge via `Metrics::gauge()`
 
 All data is sent over OTLP/HTTP to the configured collector.
 
@@ -173,22 +155,50 @@ All data is sent over OTLP/HTTP to the configured collector.
 
 ## 🛠 Configuration Macros
 
-Override defaults in `OtelDefaults.h` or via `-D` flags:
+Set via `-D` flags in `platformio.ini` `build_flags`.
+
+### Endpoint
+
+| Macro                                      | Default                        | Description |
+| ------------------------------------------ | ------------------------------ | ----------- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`              | *(empty)*                      | Base URL for all signals; `/v1/traces`, `/v1/metrics`, `/v1/logs` are appended automatically. Follows the [OTel exporter spec](https://opentelemetry.io/docs/specs/otel/protocol/exporter/). Takes priority over `OTEL_COLLECTOR_BASE_URL`. |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`         | *(empty)*                      | Per-signal endpoint override, used verbatim (no path appended). Overrides `OTEL_EXPORTER_OTLP_ENDPOINT` for logs. |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`       | *(empty)*                      | Same, for traces. |
+| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`      | *(empty)*                      | Same, for metrics. |
+| `OTEL_COLLECTOR_BASE_URL`                  | `http://192.168.8.50:4318`     | Legacy base URL fallback. Prefer `OTEL_EXPORTER_OTLP_ENDPOINT` for new setups. |
+
+### Headers & Authentication
+
+| Macro                                      | Default   | Description |
+| ------------------------------------------ | --------- | ----------- |
+| `OTEL_EXPORTER_OTLP_HEADERS`               | *(empty)* | Comma-separated `key=value` headers added to every request. Values containing commas must be percent-encoded. Example: `"dd-api-key=abc123"` |
+| `OTEL_EXPORTER_OTLP_LOGS_HEADERS`          | *(empty)* | Per-signal header overrides, merged on top of `OTEL_EXPORTER_OTLP_HEADERS`. |
+| `OTEL_EXPORTER_OTLP_TRACES_HEADERS`        | *(empty)* | Same, for traces. |
+| `OTEL_EXPORTER_OTLP_METRICS_HEADERS`       | *(empty)* | Same, for metrics. |
+
+### TLS
+
+| Macro                | Default | Description |
+| -------------------- | ------- | ----------- |
+| `OTEL_TLS_INSECURE`  | `1`     | When `1`, HTTPS connections skip certificate validation. Set to `0` for strict validation (requires a CA cert — see `OtelSender.h`). |
+
+### Service identity
 
 | Macro                    | Default            | Description                                     |
 | ------------------------ | ------------------ | ----------------------------------------------- |
-| `WIFI_SSID`              | `"default"`        | Wi‑Fi SSID                                      |
-| `WIFI_PASS`              | `"default"`        | Wi‑Fi password                                  |
-| `OTEL_COLLECTOR_BASE_URL`| `Null`             | The base URL (http://192.168.8.10:4318) of the otel collector |
-| `OTEL_SERVICE_NAME`      | `"demo_service"`   | Name of your service                            |
-| `OTEL_SERVICE_NAMESPACE` | `"demo_namespace"` | Service namespace                               |
-| `OTEL_SERVICE_VERSION`   | `"v1.0.0"`         | Semantic version                                |
-| `OTEL_SERVICE_INSTANCE`  | `"instance-1"`     | Unique instance ID                              |
-| `OTEL_DEPLOY_ENV`        | `"dev"`            | Deployment environment (e.g. `prod`, `staging`) |
-| `OTEL_WORKER_BURST`      | `16`               | The number of telemetry messages to process at a time |
-| `OTEL_WORKER_SLEEP_MS`   | `0`                | How long to sleep between processing messages (0 is instant) |
-| `OTEL_QUEUE_CAPACITY`    | `128`              | The maximum number of telemetry messages we can store before we start to drop data |
-| `DEBUG`                  | `Null`             | Print verbose messages including OTEL Payload to the serial port       |
+| `OTEL_SERVICE_NAME`      | `"embedded-service"` | Name of your service                          |
+| `OTEL_SERVICE_INSTANCE`  | chip ID            | Unique instance identifier                      |
+| `OTEL_HOST_NAME`         | `"ESP-<chipid>"`   | Host name reported in resource attributes       |
+
+### Send behaviour
+
+| Macro                 | Default | Description |
+| --------------------- | ------- | ----------- |
+| `OTEL_SEND_ENABLE`    | `1`     | Set to `0` to compile out all network sends (useful for latency benchmarking). |
+| `OTEL_WORKER_BURST`   | `8`     | Items dequeued and sent per worker loop iteration (RP2040). |
+| `OTEL_WORKER_SLEEP_MS`| `0`     | Delay between worker iterations in ms. |
+| `OTEL_QUEUE_CAPACITY` | `16`    | SPSC queue depth for the RP2040 core-1 sender. |
+| `DEBUG`               | *(unset)* | Print verbose output including OTLP payloads to Serial. |
 
 
 ---

@@ -45,3 +45,7 @@
 
 # Environment secrets
 .env
+
+# Local dev
+.claude
+.vscode
