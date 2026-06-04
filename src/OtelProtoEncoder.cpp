@@ -50,34 +50,6 @@ static bool cb_map_attrs(pb_ostream_t* s, const pb_field_t* f, void* const* arg)
   return true;
 }
 
-// Merged map: encodes defaultLabels first, then callLabels.
-struct MergedMapCtx {
-  const std::map<String,String>* defaults;
-  const std::map<String,String>* call;
-};
-
-static bool cb_merged_map_attrs(pb_ostream_t* s, const pb_field_t* f, void* const* arg) {
-  auto* ctx = *(MergedMapCtx**)arg;
-  // Build a single merged map so call-site labels override defaults without
-  // emitting duplicate keys (OTLP backends differ on which duplicate wins).
-  std::map<String, String> merged(*ctx->defaults);
-  for (const auto& kv : *ctx->call)
-    merged[kv.first] = kv.second;
-
-  for (const auto& kv : merged) {
-    opentelemetry_proto_common_v1_KeyValue entry = opentelemetry_proto_common_v1_KeyValue_init_zero;
-    entry.key.funcs.encode = cb_cstr;
-    entry.key.arg          = (void*)kv.first.c_str();
-    entry.has_value        = true;
-    entry.value.which_value = opentelemetry_proto_common_v1_AnyValue_string_value_tag;
-    entry.value.value.string_value.funcs.encode = cb_cstr;
-    entry.value.value.string_value.arg          = (void*)kv.second.c_str();
-
-    if (!pb_encode_tag_for_field(s, f)) return false;
-    if (!pb_encode_submessage(s, opentelemetry_proto_common_v1_KeyValue_fields, &entry)) return false;
-  }
-  return true;
-}
 
 // ── Resource builder ─────────────────────────────────────────────────────────
 
@@ -279,8 +251,13 @@ void sendLog(const String& severity, int severityNum, const String& message,
   lr.body.value.string_value.funcs.encode = cb_cstr;
   lr.body.value.string_value.arg          = (void*)message.c_str();
 
-  MergedMapCtx logAttrs{&defaultLabels, &callLabels};
-  lr.attributes.funcs.encode = cb_merged_map_attrs;
+  // Merge before encoding so cb_map_attrs iterates a single map once with no
+  // heap allocation inside the nanopb callback. Call-site labels override defaults.
+  std::map<String,String> mergedAttrs(defaultLabels);
+  for (const auto& kv : callLabels)
+    mergedAttrs[kv.first] = kv.second;
+  MapCtx logAttrs{&mergedAttrs};
+  lr.attributes.funcs.encode = cb_map_attrs;
   lr.attributes.arg          = &logAttrs;
 
   // Trace correlation
