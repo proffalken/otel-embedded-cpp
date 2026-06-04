@@ -53,18 +53,19 @@ static bool cb_map_attrs(pb_ostream_t* s, const pb_field_t* f, void* const* arg)
 
 // ── Resource builder ─────────────────────────────────────────────────────────
 
+struct ResCtx { const char* sn; const char* si; const char* hn; };
+
 // Fills a Resource with service.name / service.instance.id / host.name.
-// Backed by three static String values so the c_str() pointers are stable
-// for the duration of the encode call.
+// rctx must be a caller-owned local that outlives the subsequent pb_encode()
+// call, since fillResource returns before encoding begins.
 static void fillResource(opentelemetry_proto_resource_v1_Resource& res,
-                         String& svcName, String& svcInst, String& hostName) {
+                         String& svcName, String& svcInst, String& hostName,
+                         ResCtx& rctx) {
   svcName  = defaultServiceName();
   svcInst  = defaultServiceInstanceId();
   hostName = defaultHostName();
 
   // Inline KeyValue list via a callback that emits exactly three entries.
-  struct ResCtx { const char* sn; const char* si; const char* hn; };
-  static ResCtx rctx;
   rctx = {svcName.c_str(), svcInst.c_str(), hostName.c_str()};
 
   res.attributes.funcs.encode = [](pb_ostream_t* s, const pb_field_t* f, void* const* arg) -> bool {
@@ -135,6 +136,7 @@ static void buildAndSendNumberMetric(const String& name, double value,
   using namespace OTel;
 
   String svcName, svcInst, hostName;
+  ResCtx resCtx;
 
   // DataPoint
   opentelemetry_proto_metrics_v1_NumberDataPoint dp =
@@ -154,8 +156,7 @@ static void buildAndSendNumberMetric(const String& name, double value,
 
   // DataPoint callback for the metric type
   struct DpCtx { opentelemetry_proto_metrics_v1_NumberDataPoint* dp; };
-  static DpCtx dpWrap;
-  dpWrap.dp = &dp;
+  DpCtx dpWrap{&dp};
   auto dp_cb = [](pb_ostream_t* s, const pb_field_t* f, void* const* arg) -> bool {
     auto* c = *(DpCtx**)arg;
     return pb_encode_tag_for_field(s, f) &&
@@ -181,7 +182,7 @@ static void buildAndSendNumberMetric(const String& name, double value,
   fillScope(sm.scope, metricsScopeConfig().scopeName.c_str(),
                       metricsScopeConfig().scopeVersion.c_str());
   struct SmCtx { opentelemetry_proto_metrics_v1_Metric* m; };
-  static SmCtx smCtx; smCtx.m = &metric;
+  SmCtx smCtx{&metric};
   sm.metrics.funcs.encode = [](pb_ostream_t* s, const pb_field_t* f, void* const* arg) -> bool {
     auto* c = *(SmCtx**)arg;
     return pb_encode_tag_for_field(s, f) &&
@@ -193,9 +194,9 @@ static void buildAndSendNumberMetric(const String& name, double value,
   opentelemetry_proto_metrics_v1_ResourceMetrics rm =
       opentelemetry_proto_metrics_v1_ResourceMetrics_init_zero;
   rm.has_resource = true;
-  fillResource(rm.resource, svcName, svcInst, hostName);
+  fillResource(rm.resource, svcName, svcInst, hostName, resCtx);
   struct RmCtx { opentelemetry_proto_metrics_v1_ScopeMetrics* sm; };
-  static RmCtx rmCtx; rmCtx.sm = &sm;
+  RmCtx rmCtx{&sm};
   rm.scope_metrics.funcs.encode = [](pb_ostream_t* s, const pb_field_t* f, void* const* arg) -> bool {
     auto* c = *(RmCtx**)arg;
     return pb_encode_tag_for_field(s, f) &&
@@ -207,7 +208,7 @@ static void buildAndSendNumberMetric(const String& name, double value,
   opentelemetry_proto_metrics_v1_MetricsData data =
       opentelemetry_proto_metrics_v1_MetricsData_init_zero;
   struct DataCtx { opentelemetry_proto_metrics_v1_ResourceMetrics* rm; };
-  static DataCtx dataCtx; dataCtx.rm = &rm;
+  DataCtx dataCtx{&rm};
   data.resource_metrics.funcs.encode = [](pb_ostream_t* s, const pb_field_t* f, void* const* arg) -> bool {
     auto* c = *(DataCtx**)arg;
     return pb_encode_tag_for_field(s, f) &&
@@ -238,6 +239,7 @@ void sendLog(const String& severity, int severityNum, const String& message,
              const String& traceId, const String& spanId) {
 
   String svcName, svcInst, hostName;
+  ResCtx resCtx;
 
   // LogRecord
   opentelemetry_proto_logs_v1_LogRecord lr =
@@ -285,7 +287,7 @@ void sendLog(const String& severity, int severityNum, const String& message,
   fillScope(sl.scope, logScopeConfig().scopeName.c_str(),
                       logScopeConfig().scopeVersion.c_str());
   struct SlCtx { opentelemetry_proto_logs_v1_LogRecord* lr; };
-  static SlCtx slCtx; slCtx.lr = &lr;
+  SlCtx slCtx{&lr};
   sl.log_records.funcs.encode = [](pb_ostream_t* s, const pb_field_t* f, void* const* arg) -> bool {
     auto* c = *(SlCtx**)arg;
     return pb_encode_tag_for_field(s, f) &&
@@ -297,9 +299,9 @@ void sendLog(const String& severity, int severityNum, const String& message,
   opentelemetry_proto_logs_v1_ResourceLogs rl =
       opentelemetry_proto_logs_v1_ResourceLogs_init_zero;
   rl.has_resource = true;
-  fillResource(rl.resource, svcName, svcInst, hostName);
+  fillResource(rl.resource, svcName, svcInst, hostName, resCtx);
   struct RlCtx { opentelemetry_proto_logs_v1_ScopeLogs* sl; };
-  static RlCtx rlCtx; rlCtx.sl = &sl;
+  RlCtx rlCtx{&sl};
   rl.scope_logs.funcs.encode = [](pb_ostream_t* s, const pb_field_t* f, void* const* arg) -> bool {
     auto* c = *(RlCtx**)arg;
     return pb_encode_tag_for_field(s, f) &&
@@ -311,7 +313,7 @@ void sendLog(const String& severity, int severityNum, const String& message,
   opentelemetry_proto_logs_v1_LogsData ld =
       opentelemetry_proto_logs_v1_LogsData_init_zero;
   struct LdCtx { opentelemetry_proto_logs_v1_ResourceLogs* rl; };
-  static LdCtx ldCtx; ldCtx.rl = &rl;
+  LdCtx ldCtx{&rl};
   ld.resource_logs.funcs.encode = [](pb_ostream_t* s, const pb_field_t* f, void* const* arg) -> bool {
     auto* c = *(LdCtx**)arg;
     return pb_encode_tag_for_field(s, f) &&
