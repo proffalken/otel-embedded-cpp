@@ -84,8 +84,8 @@ public:
   String substring(unsigned int from, unsigned int to = 0) const {
     return to ? String(substr(from, to - from)) : String(substr(from));
   }
-  int   toInt()   const { return empty() ? 0   : std::stoi(*this); }
-  float toFloat() const { return empty() ? 0.f : std::stof(*this); }
+  int   toInt()   const { if (empty()) return 0;   try { return std::stoi(*this); }  catch (...) { return 0; } }
+  float toFloat() const { if (empty()) return 0.f; try { return std::stof(*this); } catch (...) { return 0.f; } }
 
   String& operator+=(const char*   s) { std::string::operator+=(s); return *this; }
   String& operator+=(const String& s) { std::string::operator+=(s); return *this; }

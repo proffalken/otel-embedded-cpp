@@ -151,9 +151,7 @@ void loop() {
     OTel::Metrics::gauge("sensor.temperature", temperature, "Cel",
                          {{"sensor.id", "1"}});
 
-    static double totalReadings = 0;
-    totalReadings += 1.0;
-    OTel::Metrics::sum("sensor.readings.total", totalReadings,
+    OTel::Metrics::sum("sensor.readings.total", 1.0,
                        /*isMonotonic=*/true, "DELTA", "1",
                        {{"sensor.id", "1"}});
 

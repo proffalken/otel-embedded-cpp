@@ -215,21 +215,21 @@ static void doPost_(const String &url, const std::vector<uint8_t> &payload,
 {
   const auto &hdrs = headersForPath_(path);
 
-  auto fire = [&](bool ok)
+  auto fire = [&](HTTPClient &client, bool ok)
   {
     if (!ok)
       return;
-    httpClient_.addHeader("Content-Type", contentType);
+    client.addHeader("Content-Type", contentType);
     for (const auto &h : hdrs)
-      httpClient_.addHeader(h.first, h.second);
-    (void)httpClient_.POST(const_cast<uint8_t *>(payload.data()), payload.size());
-    httpClient_.end();
+      client.addHeader(h.first, h.second);
+    (void)client.POST(const_cast<uint8_t *>(payload.data()), payload.size());
+    client.end();
   };
 
   if (url.startsWith("https://"))
   {
     ensureHttpInit_();
-    fire(httpClient_.begin(tlsClient_, url));
+    fire(httpClient_, httpClient_.begin(tlsClient_, url));
   }
   else
   {
@@ -240,9 +240,9 @@ static void doPost_(const String &url, const std::vector<uint8_t> &payload,
     HTTPClient http;
 #if defined(ESP8266)
     WiFiClient wc;
-    fire(http.begin(wc, url));
+    fire(http, http.begin(wc, url));
 #else
-    fire(http.begin(url));
+    fire(http, http.begin(url));
 #endif
   }
 }
@@ -257,10 +257,11 @@ bool OTelSender::enqueue_(const char *path, const char *contentType, std::vector
 
   if (next == t)
   {
-    // Full: drop oldest (advance tail)
-    size_t new_t = (t + 1) % QCAP;
-    tail_.store(new_t, std::memory_order_release);
+    // Full: drop the incoming item. tail_ is consumer-owned in this SPSC
+    // queue; writing it from the producer breaks the ownership invariant and
+    // can corrupt the queue on RP2040 where core 1 consumes concurrently.
     drops_.fetch_add(1, std::memory_order_relaxed);
+    return false;
   }
 
   q_[h].path = path;
