@@ -195,7 +195,13 @@ static void ensureHttpInit_()
 #else
 #error "OTEL_TLS_INSECURE=0 requires -DOTEL_TLS_CA_CERT=\"...PEM...\" to be defined."
 #endif
+  // setHandshakeTimeout() is only available on ESP32 (NetworkClientSecure).
+  // It is absent from both the ESP8266 BearSSL and the Earle Philhower RP2040
+  // WiFiClientSecure implementations. The socket-level setTimeout() below
+  // provides a connection timeout on all three platforms.
+#if defined(ESP32)
   tlsClient_.setHandshakeTimeout(20);
+#endif
   tlsClient_.setTimeout(15);
   httpClient_.setReuse(true);
   httpClient_.setTimeout(15000);
