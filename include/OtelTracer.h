@@ -564,22 +564,32 @@ public:
 
   Span& operator=(Span&& o) noexcept {
     if (this != &o) {
-      if (!ended_) end();     // finish our current span if still open
-      name_        = std::move(o.name_);
-      traceId_     = std::move(o.traceId_);
-      spanId_      = std::move(o.spanId_);
-      startNs_     = o.startNs_;
-      prevTraceId_ = std::move(o.prevTraceId_);
-      prevSpanId_  = std::move(o.prevSpanId_);
+      // Check whether the RHS is the active span BEFORE end() restores the context.
+      // If it is, end() will clobber the context with the LHS parent's IDs, and
+      // subsequent spans/logs would link to the wrong parent.
+      bool rhs_was_active = (currentTraceContext().traceId == o.traceId_ &&
+                             currentTraceContext().spanId  == o.spanId_);
+      if (!ended_) end();
+      name_          = std::move(o.name_);
+      traceId_       = std::move(o.traceId_);
+      spanId_        = std::move(o.spanId_);
+      startNs_       = o.startNs_;
+      prevTraceId_   = std::move(o.prevTraceId_);
+      prevSpanId_    = std::move(o.prevSpanId_);
       attrs_         = std::move(o.attrs_);
       events_        = std::move(o.events_);
       kind_          = o.kind_;
       statusCode_    = o.statusCode_;
       statusMessage_ = std::move(o.statusMessage_);
       ended_         = o.ended_;
-      o.ended_       = true;    // source won't end() again
+      o.ended_       = true;
       o.prevTraceId_ = "";
       o.prevSpanId_  = "";
+      // Reinstall the moved-in span as active if the source was active.
+      if (rhs_was_active && !ended_) {
+        currentTraceContext().traceId = traceId_;
+        currentTraceContext().spanId  = spanId_;
+      }
     }
     return *this;
   }

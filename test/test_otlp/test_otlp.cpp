@@ -150,6 +150,101 @@ void test_span_has_non_empty_trace_id() {
   TEST_ASSERT_TRUE(strlen(tid) > 0);
 }
 
+void test_span_default_kind_is_server() {
+  auto span = OTel::Tracer::startSpan("my-op");
+  span.end();
+  JsonDocument doc;
+  deserializeJson(doc, FakeSender::lastJson);
+  int kind = doc["resourceSpans"][0]["scopeSpans"][0]["spans"][0]["kind"];
+  TEST_ASSERT_EQUAL_INT(OTel::SpanKind::SERVER, kind);
+}
+
+void test_span_setKind_client() {
+  auto span = OTel::Tracer::startSpan("my-op");
+  span.setKind(OTel::SpanKind::CLIENT);
+  span.end();
+  JsonDocument doc;
+  deserializeJson(doc, FakeSender::lastJson);
+  int kind = doc["resourceSpans"][0]["scopeSpans"][0]["spans"][0]["kind"];
+  TEST_ASSERT_EQUAL_INT(OTel::SpanKind::CLIENT, kind);
+}
+
+void test_span_status_absent_when_unset() {
+  auto span = OTel::Tracer::startSpan("my-op");
+  span.end();
+  JsonDocument doc;
+  deserializeJson(doc, FakeSender::lastJson);
+  TEST_ASSERT_TRUE(
+    doc["resourceSpans"][0]["scopeSpans"][0]["spans"][0]["status"].isNull());
+}
+
+void test_span_setError_emits_status_code_and_message() {
+  auto span = OTel::Tracer::startSpan("my-op");
+  span.setError("something failed");
+  span.end();
+  JsonDocument doc;
+  deserializeJson(doc, FakeSender::lastJson);
+  JsonObject status =
+    doc["resourceSpans"][0]["scopeSpans"][0]["spans"][0]["status"];
+  TEST_ASSERT_EQUAL_INT(OTel::StatusCode::ERROR, (int)status["code"]);
+  TEST_ASSERT_EQUAL_STRING("something failed", (const char*)status["message"]);
+}
+
+void test_span_setOk_emits_status_without_message() {
+  auto span = OTel::Tracer::startSpan("my-op");
+  span.setOk();
+  span.end();
+  JsonDocument doc;
+  deserializeJson(doc, FakeSender::lastJson);
+  JsonObject status =
+    doc["resourceSpans"][0]["scopeSpans"][0]["spans"][0]["status"];
+  TEST_ASSERT_EQUAL_INT(OTel::StatusCode::OK, (int)status["code"]);
+  TEST_ASSERT_TRUE(status["message"].isNull());
+}
+
+// ── Resource attribute merging ────────────────────────────────────────────────
+
+void test_resource_runtime_value_appears_in_span() {
+  // setUp sets service.name = "test-service" via defaultResource()
+  auto span = OTel::Tracer::startSpan("my-op");
+  span.end();
+  JsonDocument doc;
+  deserializeJson(doc, FakeSender::lastJson);
+  JsonArray attrs = doc["resourceSpans"][0]["resource"]["attributes"];
+  bool found = false;
+  for (JsonObject a : attrs) {
+    if (strcmp(a["key"], "service.name") == 0) {
+      found = (strcmp(a["value"]["stringValue"], "test-service") == 0);
+      break;
+    }
+  }
+  TEST_ASSERT_TRUE(found);
+}
+
+void test_resource_partial_override_keeps_fallback_keys() {
+  // Clear all runtime attrs, set only service.name — the other keys should
+  // fall back to compile-time defaults (service.instance.id and host.name).
+  OTel::defaultResource().clear();
+  OTel::defaultResource().set("service.name", "partial-override");
+
+  auto span = OTel::Tracer::startSpan("my-op");
+  span.end();
+  JsonDocument doc;
+  deserializeJson(doc, FakeSender::lastJson);
+  JsonArray attrs = doc["resourceSpans"][0]["resource"]["attributes"];
+
+  bool hasCustomName = false;
+  bool hasInstanceId = false;
+  for (JsonObject a : attrs) {
+    if (strcmp(a["key"], "service.name") == 0)
+      hasCustomName = (strcmp(a["value"]["stringValue"], "partial-override") == 0);
+    if (strcmp(a["key"], "service.instance.id") == 0)
+      hasInstanceId = true;
+  }
+  TEST_ASSERT_TRUE(hasCustomName);
+  TEST_ASSERT_TRUE(hasInstanceId);
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 int main() {
@@ -169,10 +264,23 @@ int main() {
   RUN_TEST(test_log_body_string_value);
   RUN_TEST(test_log_error_severity_text);
 
-  // Traces
+  // Traces — basic
   RUN_TEST(test_span_sends_to_traces_endpoint);
   RUN_TEST(test_span_name_in_payload);
   RUN_TEST(test_span_has_non_empty_trace_id);
+
+  // Traces — span kind
+  RUN_TEST(test_span_default_kind_is_server);
+  RUN_TEST(test_span_setKind_client);
+
+  // Traces — span status
+  RUN_TEST(test_span_status_absent_when_unset);
+  RUN_TEST(test_span_setError_emits_status_code_and_message);
+  RUN_TEST(test_span_setOk_emits_status_without_message);
+
+  // Resource attribute merging
+  RUN_TEST(test_resource_runtime_value_appears_in_span);
+  RUN_TEST(test_resource_partial_override_keeps_fallback_keys);
 
   return UNITY_END();
 }
