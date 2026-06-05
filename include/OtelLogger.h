@@ -8,7 +8,7 @@
 #include <ArduinoJson.h>
 #include "OtelDefaults.h"   // expects: nowUnixNano()
 #include "OtelSender.h"     // expects: OTelSender::sendJson(path, doc)
-#include "OtelTracer.h"     // provides: currentTraceContext(), u64ToStr(), defaults & addResAttr helpers
+#include "OtelTracer.h"     // provides: currentTraceContext(), u64ToStr(), buildResourceAttributes(), defaults
 
 namespace OTel {
 
@@ -134,9 +134,7 @@ private:
     // Resource (with attributes to ensure service.name lands)
     JsonObject resource = rl["resource"].to<JsonObject>();
     JsonArray rattrs = resource["attributes"].to<JsonArray>();
-    addResAttr(rattrs, "service.name",        defaultServiceName());
-    addResAttr(rattrs, "service.instance.id", defaultServiceInstanceId());
-    addResAttr(rattrs, "host.name",           defaultHostName());
+    buildResourceAttributes(rattrs, defaultServiceName(), defaultServiceInstanceId(), defaultHostName());
 
     // Scope
     JsonObject sl = rl["scopeLogs"].to<JsonArray>().add<JsonObject>();
