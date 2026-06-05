@@ -19,17 +19,10 @@ static void addPointAttributes(JsonArray& attrArray,
   }
 }
 
-/** Populate the OTLP resource object from defaultResource() or compile-time defaults. */
+/** Populate the OTLP resource object, merging runtime and compile-time defaults. */
 static void addCommonResource(JsonObject& resource) {
-  auto &res = OTel::defaultResource();
-  if (!res.empty()) {
-    res.addResourceAttributes(resource);
-    return;
-  }
   JsonArray rattrs = resource["attributes"].to<JsonArray>();
-  addResAttr(rattrs, "service.name",        defaultServiceName());
-  addResAttr(rattrs, "service.instance.id", defaultServiceInstanceId());
-  addResAttr(rattrs, "host.name",           defaultHostName());
+  buildResourceAttributes(rattrs, defaultServiceName(), defaultServiceInstanceId(), defaultHostName());
 }
 
 /** Write the instrumentation scope name and version into @p scope. */

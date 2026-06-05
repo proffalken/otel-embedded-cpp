@@ -150,6 +150,33 @@ inline OTelResourceConfig& defaultResource() {
   return rc;
 }
 
+/**
+ * Populate an OTLP resource attributes array by merging runtime defaultResource()
+ * values with compile-time fallbacks.  Runtime values always win: if a key is
+ * set via defaultResource().set(), the fallback for that key is suppressed.
+ */
+inline void buildResourceAttributes(JsonArray& attrs,
+    const String& fallbackServiceName,
+    const String& fallbackInstanceId,
+    const String& fallbackHostName)
+{
+  static const String kServiceName("service.name");
+  static const String kServiceInstanceId("service.instance.id");
+  static const String kHostName("host.name");
+
+  const auto& res = defaultResource();
+
+  if (res.attrs.find(kServiceName) == res.attrs.end())
+    serializeKeyValue(attrs, kServiceName, fallbackServiceName);
+  if (res.attrs.find(kServiceInstanceId) == res.attrs.end())
+    serializeKeyValue(attrs, kServiceInstanceId, fallbackInstanceId);
+  if (res.attrs.find(kHostName) == res.attrs.end())
+    serializeKeyValue(attrs, kHostName, fallbackHostName);
+
+  for (const auto& p : res.attrs)
+    serializeKeyValue(attrs, p.first, p.second);
+}
+
 } // namespace OTel
 
 #endif // OTEL_DEFAULTS_H
